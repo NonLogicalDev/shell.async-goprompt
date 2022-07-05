@@ -5,12 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	_ "github.com/fatih/color"
 )
 
 var bgctx = context.Background()
@@ -58,15 +62,35 @@ func cmdRenderRun(cmd *cobra.Command, args []string) error {
 	}
 
 	lines := strings.Split(string(out), "\n")
-	vals := make(map[string]string)
+	p := make(map[string]string)
 	for _, line := range lines {
 		key, value, ok := strings.Cut(line, "\t")
 		if ok {
-			vals[key] = value
+			p[key] = value
 		}
 	}
 
-	fmt.Printf("%#v\n", vals)
+	var partsTop []string
+	if p["vcs"] == "git" {
+		gitMark := color.GreenString("git")
+
+		dirtyMarks := ""
+		if p["vcs_dirty"] != "" && p["vcs_dirty"] != "0" {
+			dirtyMarks = ":&"
+			gitMark = color.RedString("git")
+		}
+
+		distanceMarks := ""
+		distanceAhead := strInt(p["vcs_log_ahead"])
+		distanceBehind := strInt(p["vcs_log_ahead"])
+		if distanceAhead > 0 || distanceBehind > 0 {
+			distanceMarks = fmt.Sprintf(":[+%v:-%v]", distanceAhead, distanceBehind)
+		}
+
+		partsTop = append(partsTop, fmt.Sprintf("{%v:%v%v%v}", gitMark, p["vcs_br"], dirtyMarks, distanceMarks))
+	}
+
+	fmt.Println("::", strings.Join(partsTop, " "))
 	fmt.Printf(">")
 	return nil
 }
@@ -290,4 +314,9 @@ func intMin(a, b int) int {
 
 func trim(s string) string {
 	return strings.Trim(s, "\n\t ")
+}
+
+func strInt(s string) int {
+	r, _ := strconv.Atoi(s)
+	return r
 }
