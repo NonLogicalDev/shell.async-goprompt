@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -18,18 +19,56 @@ var (
 	cmd = &cobra.Command{
 		Use: "goprompt",
 	}
-	flgCmdStatus = cmd.PersistentFlags().Int(
+
+	cmdQuery = &cobra.Command{
+		Use:   "query",
+		Short: "start the query that pulls data for the prompt",
+	}
+	flgQCmdStatus = cmdQuery.PersistentFlags().Int(
 		"cmd-status", 0,
 		"cmd status of previous command",
 	)
-	flgPreexecTS = cmd.PersistentFlags().Int(
+	flgQPreexecTS = cmdQuery.PersistentFlags().Int(
 		"preexec-ts", 0,
 		"pre-execution timestamp to gauge how log execution took",
 	)
+
+	cmdRender = &cobra.Command{
+		Use:   "render",
+		Short: "render the prompt based on the results of query",
+	}
 )
 
 func init() {
-	cmd.RunE = cmdExec
+	cmdQuery.RunE = cmdQueryRun
+	cmd.AddCommand(cmdQuery)
+
+	cmdRender.RunE = cmdRenderRun
+	cmd.AddCommand(cmdRender)
+}
+
+func cmdRenderRun(cmd *cobra.Command, args []string) error {
+	if _, err := os.Stdin.Stat(); err != nil {
+		fmt.Printf("%#v", err)
+	}
+
+	out, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		panic(err)
+	}
+
+	lines := strings.Split(string(out), "\n")
+	vals := make(map[string]string)
+	for _, line := range lines {
+		key, value, ok := strings.Cut(line, "\t")
+		if ok {
+			vals[key] = value
+		}
+	}
+
+	fmt.Printf("%#v\n", vals)
+	fmt.Printf(">")
+	return nil
 }
 
 // PROMPT PARTS:
@@ -40,9 +79,9 @@ func init() {
 // (vsc-information)
 // (timestamp)
 
-func cmdExec(cmd *cobra.Command, args []string) error {
-	if *flgCmdStatus != 0 {
-		printPart("st", fmt.Sprintf("%#v", *flgCmdStatus))
+func cmdQueryRun(cmd *cobra.Command, args []string) error {
+	if *flgQCmdStatus != 0 {
+		printPart("st", fmt.Sprintf("%#v", *flgQCmdStatus))
 	}
 
 	wg := new(WaitGroupDispatcher)
@@ -61,8 +100,8 @@ func cmdExec(cmd *cobra.Command, args []string) error {
 		nowTS := time.Now()
 		printPart("ts", nowTS.Format("15:04:05 01/02/06"))
 
-		if *flgPreexecTS != 0 {
-			cmdTS := time.Unix(int64(*flgPreexecTS), 0)
+		if *flgQPreexecTS != 0 {
+			cmdTS := time.Unix(int64(*flgQPreexecTS), 0)
 
 			diff := nowTS.Sub(cmdTS)
 			printPart("ds", diff.Round(time.Second))
@@ -89,7 +128,19 @@ func cmdExec(cmd *cobra.Command, args []string) error {
 
 		cwg.Dispatch(func() {
 			if branch, err := stringExec("git", "branch", "--show-current"); err == nil {
-				printPart("vcs_br", trim(string(branch)))
+				branch = trim(branch)
+				if len(branch) > 0 {
+					printPart("vcs_br", trim(branch))
+					return
+				}
+			}
+
+			if branch, err := stringExec("git", "name-rev", "--name-only", "HEAD"); err == nil {
+				branch = trim(branch)
+				if len(branch) > 0 {
+					printPart("vcs_br", trim(branch))
+					return
+				}
 			}
 		})
 
@@ -103,17 +154,40 @@ func cmdExec(cmd *cobra.Command, args []string) error {
 				}
 			}
 		})
+
+		cwg.Dispatch(func() {
+			if status, err := stringExec("git", "rev-list", "--left-right", "--count", "HEAD...@{u}"); err == nil {
+				parts := strings.SplitN(status, "\t", 2)
+				if len(parts) < 2 {
+					parts = []string{"0", "0"}
+				}
+
+				printPart("vcs_log_ahead", parts[0])
+				printPart("vcs_log_behind", parts[1])
+			}
+		})
 	})
 
 	wg.Dispatch(func() {
+		var err error
+
 		cwg := new(WaitGroupDispatcher)
 		defer cwg.Wait()
 
-		var stgPatchTop string
-		var err error
-
-		if stgPatchTop, err = stringExec("stg", "top"); err == nil {
+		var stgSeriesLen string
+		if stgSeriesLen, err = stringExec("stg", "series", "-c"); err == nil {
 			printPart("stg", "1")
+			printPart("stg_qlen", stgSeriesLen)
+		}
+
+		cwg.Dispatch(func() {
+			if stgSeriesPos, err := stringExec("stg", "series", "-cA"); err == nil {
+				printPart("stg_qpos", stgSeriesPos)
+			}
+		})
+
+		var stgPatchTop string
+		if stgPatchTop, err = stringExec("stg", "top"); err == nil {
 			printPart("stg_top", stgPatchTop)
 		} else {
 			return
@@ -127,18 +201,6 @@ func cmdExec(cmd *cobra.Command, args []string) error {
 				printPart("stg_dirty", 1)
 			} else {
 				printPart("stg_dirty", 0)
-			}
-		})
-
-		cwg.Dispatch(func() {
-			if stgPatchLen, err := stringExec("stg", "series", "-c"); err == nil {
-				printPart("stg_qlen", stgPatchLen)
-			}
-		})
-
-		cwg.Dispatch(func() {
-			if stgPatchPos, err := stringExec("stg", "series", "-cA"); err == nil {
-				printPart("stg_qpos", stgPatchPos)
 			}
 		})
 	})

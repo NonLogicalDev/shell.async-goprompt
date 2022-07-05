@@ -40,8 +40,11 @@ typeset -g C_PROMPT_NEWLINE=$'\n%{\r%}'
 
 typeset -g G_LAST_STATUS=0
 typeset -g G_PREEXEC_TS=0
+typeset -g G_ASYNC_DONE=0
 
 typeset -gA G_PROMPT_PARTS=()
+
+typeset -g G_LAST_PROMPT=""
 
 #-------------------------------------------------------------------------------
 
@@ -65,16 +68,36 @@ __prompt_rerender() {
   if [[ ${P[vcs]} == "git" ]]; then
     local git_dirty_marks=""
     if [[ -n ${P[vcs_dirty]} && ${P[vcs_dirty]} != "0" ]]; then
-      git_dirty_marks=":&"
+      git_dirty_marks="(&)"
+    fi
+
+    local git_log_dir=""
+    if [[ ${P[vcs_log_ahead]} -gt 0 || ${P[vcs_log_behind]} -gt 0 ]]; then
+      git_log_dir=":[+${P[vcs_log_ahead]}:-${P[vcs_log_behind]}]"
     fi
 
     prompt_parts_top+=(
-      "{git:${P[vcs_br]}${git_dirty_marks}}"
+      "{${git_dirty_marks}git:${P[vcs_br]}${git_log_dir}}"
     )
 
     if [[ -n ${P[stg]} ]]; then
+      local stg_dirty_marks=""
+      if [[ -n ${P[stg_ditry]} && ${P[stg_dirty]} != "0" ]]; then
+        stg_dirty_marks="(&)"
+      fi
+
+      local stg_patch=""
+      if [[ -n ${P[stg_top]} ]]; then
+        stg_patch=":${P[stg_top]}"
+      fi
+
+      local stg_pos=""
+      if [[ ${P[stg_qpos]} -gt 0 || ${P[stg_qlen]} -gt 0 ]]; then
+        stg_pos=":[${P[stg_qpos]:-0}/${P[stg_qlen]:-0}]"
+      fi
+
       prompt_parts_top+=(
-        "{stg:${P[stg_top]}:${P[stg_qpos]}/${P[stg_qlen]}}"
+        "{stg${stg_patch}${stg_pos}}"
       )
     fi
   fi
@@ -97,26 +120,39 @@ __prompt_rerender() {
     "[${P[ts]}]"
   )
 
-  local prompt_marker=">"
+  local prompt_marker="❯"
   if [[ $KEYMAP == "vicmd" ]]; then
-      prompt_marker="<"
+      prompt_marker="❮"
+  fi
+
+  local prompt_prefix=":?"
+  if [[ $G_ASYNC_DONE -eq 1 ]]; then
+    prompt_prefix="::"
   fi
 
   local -a prompt_parts=()
   if [[ ${#prompt_parts_top[@]} -gt 0 ]]; then
-    prompt_parts+=(":: ${(j. .)prompt_parts_top}")
+    prompt_parts+=("${prompt_prefix} %F{yellow}${(j. .)prompt_parts_top}%f")
+  else
+    prompt_parts+=("${prompt_prefix} %F{yellow}-----------%f")
   fi
   if [[ ${#prompt_parts_bottom[@]} -gt 0 ]]; then
-    prompt_parts+=(":: ${(j. .)prompt_parts_bottom}")
+    prompt_parts+=("${prompt_prefix} %F{blue}${(j. .)prompt_parts_bottom}%f")
+  else
+    prompt_parts+=("${prompt_prefix} %F{blue}-----------%f")
   fi
   prompt_parts+=(
-    "$prompt_marker "
+    "%F{green}$prompt_marker%f "
   )
 
   local BR=$C_PROMPT_NEWLINE
   PROMPT="$BR${(pj.$BR.)prompt_parts}"
 
-  zle && zle reset-prompt
+  if [[ $PROMPT != $G_LAST_PROMPT ]]; then
+    zle && zle .reset-prompt
+  fi
+
+  G_LAST_PROMPT="$PROMPT"
 }
 
 #-------------------------------------------------------------------------------
@@ -134,6 +170,9 @@ __prompt_precmd() {
   # reset prompt state
   G_PROMPT_PARTS=()
 
+  # set prompt status to rendering
+  G_ASYNC_DONE=0
+
   __zle_async_dispatch __zle_async_fd_handler __async_prompt_info
 
   __prompt_rerender
@@ -149,10 +188,12 @@ __zle_async_fd_handler() {
   local ZLE_FD=$1
 
   # read in all data that is available
-  if ! IFS='' read -r ASYNC_RESULT <&"$ZLE_FD"; then
+  if ! IFS=$'\n' read -r ASYNC_RESULT <&"$ZLE_FD"; then
     # select marks this fd if we reach EOF,
     # so handle this specially.
     __zle_async_detach "$ZLE_FD"
+    G_ASYNC_DONE=1
+    __prompt_rerender
     return 1
   fi
 
@@ -197,8 +238,8 @@ __zle_async_detach() {
 #-------------------------------------------------------------------------------
 
 prompt_asynczle_setup() {
-  autoload -Uz +X add-zle-hook-widget 2>/dev/null
   autoload -Uz +X add-zsh-hook 2>/dev/null
+  autoload -Uz +X add-zle-hook-widget 2>/dev/null
 
   add-zsh-hook precmd  __prompt_precmd
   add-zsh-hook preexec __prompt_preexec
