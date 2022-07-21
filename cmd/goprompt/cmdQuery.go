@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	ps "github.com/mitchellh/go-ps"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +29,14 @@ func init() {
 	cmdQuery.RunE = cmdQueryRun
 }
 
+func timeFMT(ts time.Time) string {
+	return ts.Format("15:04:05 01/02/06")
+}
+
 func cmdQueryRun(_ *cobra.Command, _ []string) error {
+	nowTS := time.Now()
+	printPart("ts", timeFMT(nowTS))
+
 	if *flgQCmdStatus != 0 {
 		printPart("st", fmt.Sprintf("%#v", *flgQCmdStatus))
 	}
@@ -42,12 +50,9 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		if wd, err := os.Getwd(); err == nil {
 			wdh := strings.Replace(wd, homeDir, "~", 1)
 
-			printPart("wd_full", wdh)
-			printPart("wd", trimPath(wdh))
+			printPart("wd", wdh)
+			printPart("wd_trim", trimPath(wdh))
 		}
-
-		nowTS := time.Now()
-		printPart("ts", nowTS.Format("15:04:05 01/02/06"))
 
 		if *flgQPreexecTS != 0 {
 			cmdTS := time.Unix(int64(*flgQPreexecTS), 0)
@@ -57,6 +62,35 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 				printPart("ds", diff)
 			}
 		}
+	})
+
+	wg.Dispatch(func() {
+		pidCurr := os.Getpid()
+		var pidShell ps.Process
+
+		for i := 0; i < 3; i++ {
+			var err error
+			pidShell, err = ps.FindProcess(pidCurr)
+			if err != nil {
+				return
+			}
+			pidCurr = pidShell.PPid()
+		}
+
+		if pidShell == nil {
+			return
+		}
+
+		printPart("pid_shell", pidShell.Pid())
+		printPart("pid_shell_exec", pidShell.Executable())
+
+		pidShellParent, err := ps.FindProcess(pidShell.PPid())
+		if err != nil {
+			return
+		}
+
+		printPart("pid_parent", pidShellParent.Pid())
+		printPart("pid_parent_exec", pidShellParent.Executable())
 	})
 
 	//wg.Dispatch(func() {

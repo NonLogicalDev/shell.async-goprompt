@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/gookit/color v1.5.1
+	github.com/mitchellh/go-ps v1.0.0
 	github.com/spf13/cobra v1.5.0
 )
 

@@ -11,3 +11,6 @@ prompt.source:
 
 try: install
 	ZSH_DISABLE_PROMPT=Y ZSH_EXTRA_SOURCE="$(ZSH_PROMPT_SETUP_SCRIPT)" zsh
+
+exec: install
+	ZSH_DISABLE_PROMPT=Y ZSH_EXTRA_SOURCE="$(ZSH_PROMPT_SETUP_SCRIPT)" exec zsh -l
