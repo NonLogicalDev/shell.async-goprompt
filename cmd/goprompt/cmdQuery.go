@@ -25,6 +25,37 @@ var (
 	)
 )
 
+const (
+	_partStatus    = "st"
+	_partTimestamp = "ts"
+	_partDuration  = "ds"
+
+	_partWorkDir      = "wd"
+	_partWorkDirShort = "wd_trim"
+
+	_partPidShell      = "pid_shell"
+	_partPidShellExec  = "pid_shell_exec"
+	_partPidParent     = "pid_parent"
+	_partPidParentExec = "pid_parent_exec"
+
+	_partVcs       = "vcs"
+	_partVcsBranch = "vcs_br"
+	_partVcsDirty  = "vcs_dirty"
+
+	_partVcsLogAhead  = "vcs_log_ahead"
+	_partVcsLogBehind = "vcs_log_behind"
+
+	_partVcsStg      = "stg"
+	_partVcsStgQlen  = "stg_qlen"
+	_partVcsStgQpos  = "stg_qpos"
+	_partVcsStgTop   = "stg_top"
+	_partVcsStgDirty = "stg_dirty"
+
+	_partVcsGitIdxTotal    = "git_idx_total"
+	_partVcsGitIdxIncluded = "git_idx_incl"
+	_partVcsGitIdxExcluded = "git_idx_excl"
+)
+
 func init() {
 	cmdQuery.RunE = cmdQueryRun
 }
@@ -34,11 +65,19 @@ func timeFMT(ts time.Time) string {
 }
 
 func cmdQueryRun(_ *cobra.Command, _ []string) error {
+	printCH := make(chan shellKV)
+	defer close(printCH)
+
+	go shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 600*time.Millisecond)
+	printPart := func(name string, value interface{}) {
+		printCH <- shellKV{name, value}
+	}
+
 	nowTS := time.Now()
-	printPart("ts", timeFMT(nowTS))
+	printPart(_partTimestamp, timeFMT(nowTS))
 
 	if *flgQCmdStatus != 0 {
-		printPart("st", fmt.Sprintf("%#v", *flgQCmdStatus))
+		printPart(_partStatus, fmt.Sprintf("%#v", *flgQCmdStatus))
 	}
 
 	wg := new(WaitGroupDispatcher)
@@ -50,8 +89,8 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		if wd, err := os.Getwd(); err == nil {
 			wdh := strings.Replace(wd, homeDir, "~", 1)
 
-			printPart("wd", wdh)
-			printPart("wd_trim", trimPath(wdh))
+			printPart(_partWorkDir, wdh)
+			printPart(_partWorkDirShort, trimPath(wdh))
 		}
 
 		if *flgQPreexecTS != 0 {
@@ -59,7 +98,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 
 			diff := nowTS.Sub(cmdTS).Round(time.Second)
 			if diff > 1 {
-				printPart("ds", diff)
+				printPart(_partDuration, diff)
 			}
 		}
 	})
@@ -81,16 +120,16 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return
 		}
 
-		printPart("pid_shell", pidShell.Pid())
-		printPart("pid_shell_exec", pidShell.Executable())
+		printPart(_partPidShell, pidShell.Pid())
+		printPart(_partPidShellExec, pidShell.Executable())
 
 		pidShellParent, err := ps.FindProcess(pidShell.PPid())
 		if err != nil {
 			return
 		}
 
-		printPart("pid_parent", pidShellParent.Pid())
-		printPart("pid_parent_exec", pidShellParent.Executable())
+		printPart(_partPidParent, pidShellParent.Pid())
+		printPart(_partPidParentExec, pidShellParent.Executable())
 	})
 
 	//wg.Dispatch(func() {
@@ -106,7 +145,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		defer cwg.Wait()
 
 		if _, err := stringExec("git", "rev-parse", "--show-toplevel"); err == nil {
-			printPart("vcs", "git")
+			printPart(_partVcs, "git")
 		} else {
 			return
 		}
@@ -115,7 +154,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			if branch, err := stringExec("git", "branch", "--show-current"); err == nil {
 				branch = trim(branch)
 				if len(branch) > 0 {
-					printPart("vcs_br", trim(branch))
+					printPart(_partVcsBranch, trim(branch))
 					return
 				}
 			}
@@ -123,21 +162,51 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			if branch, err := stringExec("git", "name-rev", "--name-only", "HEAD"); err == nil {
 				branch = trim(branch)
 				if len(branch) > 0 {
-					printPart("vcs_br", trim(branch))
+					printPart(_partVcsBranch, trim(branch))
 					return
 				}
 			}
 		})
 
 		cwg.Dispatch(func() {
-			if status, err := stringExec("git", "status", "--porcelain"); err == nil {
-				if len(status) > 0 {
-					printPart("vcs_dirty", 1)
-					//printPart("vcs_dirty_st", js(status))
-				} else {
-					printPart("vsc_dirty", 0)
-				}
+			status, err := stringExec("git", "status", "--porcelain");
+			if err != nil {
+				return
 			}
+
+			if len(status) == 0 {
+				printPart(_partVcsDirty, 0)
+				return
+			}
+
+			printPart(_partVcsDirty, 1)
+
+			fTotal := 0
+			fInIndex := 0
+			fOutOfIndex := 0
+
+			lines := strings.Split(status, "\n")
+			for _, line := range lines {
+				if len(line) < 2 {
+					continue
+				}
+
+				statusInIndex := line[0]
+				statusOutOfIndex := line[1]
+
+				if statusInIndex != ' ' {
+					fInIndex += 1
+				}
+				if statusOutOfIndex != ' ' {
+					fOutOfIndex += 1
+				}
+
+				fTotal += 1
+			}
+
+			printPart(_partVcsGitIdxTotal, fTotal)
+			printPart(_partVcsGitIdxIncluded, fInIndex)
+			printPart(_partVcsGitIdxExcluded, fOutOfIndex)
 		})
 
 		cwg.Dispatch(func() {
@@ -147,8 +216,9 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 					parts = []string{"0", "0"}
 				}
 
-				printPart("vcs_log_ahead", parts[0])
-				printPart("vcs_log_behind", parts[1])
+				printPart(_partVcsLogAhead, parts[0])
+				printPart(_partVcsLogBehind, parts[1])
+
 			}
 		})
 	})
@@ -161,19 +231,19 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 
 		var stgSeriesLen string
 		if stgSeriesLen, err = stringExec("stg", "series", "-c"); err == nil {
-			printPart("stg", "1")
-			printPart("stg_qlen", stgSeriesLen)
+			printPart(_partVcsStg, "1")
+			printPart(_partVcsStgQlen, stgSeriesLen)
 		}
 
 		cwg.Dispatch(func() {
 			if stgSeriesPos, err := stringExec("stg", "series", "-cA"); err == nil {
-				printPart("stg_qpos", stgSeriesPos)
+				printPart(_partVcsStgQpos, stgSeriesPos)
 			}
 		})
 
 		var stgPatchTop string
 		if stgPatchTop, err = stringExec("stg", "top"); err == nil {
-			printPart("stg_top", stgPatchTop)
+			printPart(_partVcsStgTop, stgPatchTop)
 		} else {
 			return
 		}
@@ -183,9 +253,9 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			stgSHA, _ := stringExec("stg", "id", stgPatchTop)
 
 			if gitSHA != stgSHA {
-				printPart("stg_dirty", 1)
+				printPart(_partVcsStgDirty, 1)
 			} else {
-				printPart("stg_dirty", 0)
+				printPart(_partVcsStgDirty, 0)
 			}
 		})
 	})

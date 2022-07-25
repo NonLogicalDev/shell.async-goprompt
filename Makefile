@@ -1,7 +1,7 @@
 MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 
-ZSH_PROMPT_SETUP_SCRIPT := $(CURRENT_DIR)/zsh/prompt_asynczle_setup.zsh
+ZSH_PROMPT_SETUP_SCRIPT := $(CURRENT_DIR)/plugin/zsh/prompt_asynczle_setup.zsh
 
 install:
 	go install ./cmd/goprompt

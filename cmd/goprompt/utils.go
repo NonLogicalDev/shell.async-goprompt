@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"EXP/pkg/shellout"
 )
@@ -27,12 +27,61 @@ func (d *WaitGroupDispatcher) Wait() {
 	d.wg.Wait()
 }
 
-func printPart(name string, value interface{}) {
-	if _, err := os.Stdout.Stat(); err != nil {
-		os.Exit(1)
-	}
-	fmt.Printf("%s\t%v\n", name, value)
+//: ----------------------------------------------------------------------------
+
+type shellKV struct {
+	name  string
+	value interface{}
 }
+
+func (kv shellKV) Print() {
+	fmt.Printf("%s\t%v\n", kv.name, kv.value)
+}
+
+func shellKVStaggeredPrinter(
+	printCH chan shellKV,
+
+	dFirst time.Duration,
+	d time.Duration,
+) {
+	var parts []shellKV
+
+	printParts := func() {
+		for _, p := range parts {
+			p.Print()
+		}
+		if len(parts) > 0 {
+			fmt.Println()
+		}
+
+		parts = nil
+	}
+
+	timerFirst := time.NewTimer(dFirst)
+	timer := time.NewTimer(d)
+
+LOOP:
+	for {
+		select {
+		case rx, ok := <-printCH:
+			if !ok {
+				break LOOP
+			}
+			parts = append(parts, rx)
+
+		case <-timerFirst.C:
+			printParts()
+
+		case <-timer.C:
+			printParts()
+			timer.Reset(d)
+		}
+	}
+
+	printParts()
+}
+
+//: ----------------------------------------------------------------------------
 
 func stringExec(path string, args ...string) (string, error) {
 	out, err := shellout.New(bgctx,

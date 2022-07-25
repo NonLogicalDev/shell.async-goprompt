@@ -47,7 +47,7 @@ var (
 )
 
 func setColorMode(mode string) {
-	wrapC := func(pref, suff string) func (args ...interface{}) string {
+	wrapC := func(pref, suff string) func(args ...interface{}) string {
 		return func(args ...interface{}) string {
 			return pref + fmt.Sprint(args...) + suff
 		}
@@ -67,7 +67,6 @@ func setColorMode(mode string) {
 		magentaC = color.Magenta.Render
 	}
 }
-
 
 func init() {
 	cmdRender.RunE = cmdRenderRun
@@ -95,26 +94,30 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 	}
 
 	var partsTop []string
-	if p["vcs"] == "git" {
+	if p[_partVcs] == "git" {
 		var gitParts []string
 
 		gitMark := "git"
 		gitMarkC := yellowC
 
-		gitBranch := fmt.Sprint(p["vcs_br"])
+		gitBranch := fmt.Sprint(p[_partVcsBranch])
 		gitBranchC := greenC
 
 		gitDirtyMarks := ""
 		gitDirtyMarksC := redC
-		if p["vcs_dirty"] != "" && p["vcs_dirty"] != "0" {
+		if p[_partVcsDirty] != "" && p[_partVcsDirty] != "0" {
 			gitDirtyMarks = "&"
+
+			if p[_partVcsGitIdxExcluded] == "0" {
+				gitDirtyMarksC = greenC
+			}
 		}
 
 		distanceMarks := ""
 		distanceMarksC := magentaC
 
-		distanceAhead := strInt(p["vcs_log_ahead"])
-		distanceBehind := strInt(p["vcs_log_ahead"])
+		distanceAhead := strInt(p[_partVcsLogAhead])
+		distanceBehind := strInt(p[_partVcsLogBehind])
 		if distanceAhead > 0 || distanceBehind > 0 {
 			distanceMarks = fmt.Sprintf("[+%v:-%v]", distanceAhead, distanceBehind)
 		}
@@ -131,25 +134,25 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 		partsTop = append(partsTop, fmt.Sprintf("{%v}", strings.Join(gitParts, ":")))
 	}
 
-	if p["stg"] != "" {
+	if p[_partVcsStg] != "" {
 		var stgParts []string
 
 		stgMark := "stg"
 		stgMarkC := yellowC
 
-		stgTopPatch := p["stg_top"]
+		stgTopPatch := p[_partVcsStgTop]
 		stgTopPatchC := greenC
 
 		stgQueueMark := ""
 		stgQueueMarkC := normalC
 
-		stgQueueLen := strInt(p["stg_qlen"])
-		stgQueuePos := strInt(p["stg_qpos"])
+		stgQueueLen := strInt(p[_partVcsStgQlen])
+		stgQueuePos := strInt(p[_partVcsStgQpos])
 		if stgQueuePos > 0 {
 			stgQueueMark = fmt.Sprintf("%d/%d", stgQueuePos, stgQueueLen)
 		}
 
-		if strInt(p["stg_dirty"]) != 0 {
+		if strInt(p[_partVcsStgDirty]) != 0 {
 			stgTopPatchC = redC
 		}
 
@@ -168,24 +171,24 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 	}
 
 	var partsBottom []string
-	if strInt(p["st"]) > 0 {
-		partsBottom = append(partsBottom, redC("["+p["st"]+"]"))
+	if strInt(p[_partStatus]) > 0 {
+		partsBottom = append(partsBottom, redC("["+p[_partStatus]+"]"))
 	}
 
-	if p["pid_parent_exec"] != "" {
-		partsBottom = append(partsBottom, "("+p["pid_parent_exec"]+")")
+	if p[_partPidParentExec] != "" {
+		partsBottom = append(partsBottom, "("+p[_partPidParentExec]+")")
 	}
 
-	partsBottom = append(partsBottom, yellowC("(")+blueC(p["wd_trim"])+yellowC(")"))
+	partsBottom = append(partsBottom, yellowC("(")+blueC(p[_partWorkDirShort])+yellowC(")"))
 
-	if p["ds"] != "" {
-		partsBottom = append(partsBottom, fmt.Sprintf("%v", p["ds"]))
+	if p[_partDuration] != "" {
+		partsBottom = append(partsBottom, fmt.Sprintf("%v", p[_partDuration]))
 	}
 
 	nowTS := time.Now()
 	cmdTS := timeFMT(nowTS)
-	if len(p["ts"]) != 0 {
-		cmdTS = p["ts"]
+	if len(p[_partTimestamp]) != 0 {
+		cmdTS = p[_partTimestamp]
 	}
 	partsBottom = append(partsBottom, fmt.Sprintf("[%v]", cmdTS))
 
@@ -199,11 +202,14 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 		promptStatusMarker = ":? "
 	}
 
-	promptLines := []string{"",
-		promptStatusMarker + strings.Join(partsTop, " "),
-		promptStatusMarker + strings.Join(partsBottom, " "),
-		promptMarker,
+	promptLines := []string{""}
+	if len(partsTop) > 0 {
+		promptLines = append(promptLines, promptStatusMarker+strings.Join(partsTop, " "))
 	}
+	if len(partsBottom) > 0 {
+		promptLines = append(promptLines, promptStatusMarker+strings.Join(partsBottom, " "))
+	}
+	promptLines = append(promptLines, promptMarker)
 
 	fmt.Print(strings.Join(promptLines, "\n"))
 

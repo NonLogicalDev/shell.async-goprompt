@@ -1,3 +1,48 @@
+__zsh_buffer_fd_reader() {
+  local D=$1
+  local FD=$2
+  local CALLBACK=$3
+
+  BUFFER=()
+  BUFFER_NEW_DATA=0
+
+  while; do
+    local t_start=$EPOCHREALTIME
+
+    IFS= read -t "$D" -r -u "$FD" read_result
+    local read_status=$?
+
+    local t_end=$EPOCHREALTIME
+
+    local t_delta=$(( $t_end - $t_start ))
+    if (( $t_delta < $D && $read_status != 0 )); then
+      # This is EOF, since delta is less than timeout.
+      # Be careful here as we might still have partial data in read_result.
+      if [[ $read_result != "" ]]; then
+        BUFFER+=( "$read_result" )
+        BUFFER_NEW_DATA=1
+      fi
+      break
+
+    elif (( $read_status == 0 )); then
+      # This is buisness as usual
+      BUFFER+=( "$read_result" )
+      BUFFER_NEW_DATA=1
+
+    elif [[ $BUFFER_NEW_DATA -eq 1 ]]; then
+      # If we reached here we have partial results from FD.
+      # But there has been a delay in fetching new data from FD.
+      # Send partial results to callback.
+
+      "${CALLBACK}" "${(pj.\n.)BUFFER}" 0
+      BUFFER_NEW_DATA=0
+    fi
+  done
+
+  "${CALLBACK}" "${(pj.\n.)BUFFER}" 1
+}
+
+
 __prompt_rerender() {
   local -A P=( )
 
