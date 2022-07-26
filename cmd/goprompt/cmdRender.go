@@ -205,6 +205,8 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 	promptLines := []string{""}
 	if len(partsTop) > 0 {
 		promptLines = append(promptLines, promptStatusMarker+strings.Join(partsTop, " "))
+	} else {
+		promptLines = append(promptLines, promptStatusMarker+strings.Repeat("-", 30))
 	}
 	if len(partsBottom) > 0 {
 		promptLines = append(promptLines, promptStatusMarker+strings.Join(partsBottom, " "))

@@ -3,19 +3,20 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"EXP/pkg/shellout"
+	"github.com/NonLogicalDev/shell.async-goprompt/pkg/shellout"
 )
 
-type WaitGroupDispatcher struct {
+type AsyncTaskDispatcher struct {
 	wg sync.WaitGroup
 }
 
-func (d *WaitGroupDispatcher) Dispatch(fn func()) {
+func (d *AsyncTaskDispatcher) Dispatch(fn func()) {
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
@@ -23,7 +24,7 @@ func (d *WaitGroupDispatcher) Dispatch(fn func()) {
 	}()
 }
 
-func (d *WaitGroupDispatcher) Wait() {
+func (d *AsyncTaskDispatcher) Wait() {
 	d.wg.Wait()
 }
 
@@ -35,7 +36,11 @@ type shellKV struct {
 }
 
 func (kv shellKV) Print() {
-	fmt.Printf("%s\t%v\n", kv.name, kv.value)
+	fmt.Println(kv.String())
+}
+
+func (kv shellKV) String() string {
+	return fmt.Sprintf("%s\t%v", kv.name, kv.value)
 }
 
 func shellKVStaggeredPrinter(
@@ -46,15 +51,14 @@ func shellKVStaggeredPrinter(
 ) {
 	var parts []shellKV
 
-	printParts := func() {
+	printParts := func(parts []shellKV) {
 		for _, p := range parts {
 			p.Print()
 		}
 		if len(parts) > 0 {
 			fmt.Println()
 		}
-
-		parts = nil
+		os.Stdout.Sync()
 	}
 
 	timerFirst := time.NewTimer(dFirst)
@@ -70,15 +74,18 @@ LOOP:
 			parts = append(parts, rx)
 
 		case <-timerFirst.C:
-			printParts()
+			printParts(parts)
+			parts = nil
 
 		case <-timer.C:
-			printParts()
+			printParts(parts)
+			parts = nil
 			timer.Reset(d)
 		}
 	}
 
-	printParts()
+	printParts(parts)
+	parts = nil
 }
 
 //: ----------------------------------------------------------------------------
@@ -130,7 +137,7 @@ func intMin(a, b int) int {
 }
 
 func trim(s string) string {
-	return strings.Trim(s, "\n\t ")
+	return strings.Trim(s, "\n")
 }
 
 func strInt(s string) int {

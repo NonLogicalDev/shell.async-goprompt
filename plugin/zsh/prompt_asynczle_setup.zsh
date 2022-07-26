@@ -1,39 +1,5 @@
 # In a file `prompt_asynczle_setup` available on `fpath`
-#
-# ZSH Mindfuck:
-#
-# * ${(f)EXPR} splits value of expr by Newline
-# * ${(s/ /)EXPR} splits value of expr by space, or any other char instead of space
-# * ${(j/ /)EXPR) joins value of expr by space
-# * ${(kv)EXPR) if EXPR is an associative array, this gives you a compacted sequence of key, value pairs.
-# * ${(p...)EXPR) the p here makes the following magic to recognize Print Escapes ala '\n'
-# * ${(@...)EXPR) in double quotes puts each array result into separate word
-#
-# ZSH Mindfuck Examples:
-#
-# > typeset -A K=(a b c d)
-#
-# > echo ${(j:.:)${(kv)K}}
-# a.b.c.d
-#
-# > echo ${(j:.:)${(k)K}}
-# a.c
-#
-# > echo ${(j:.:)${(v)K}}
-# b.d
-#
-# > echo "${(j:.:)${(v)K}}"
-# b d
-#
-# > echo "${(@j:.:)${(v)K}}"
-# b d
-#
-# > echo "${(@j:.:)${(@v)K}}"
-# b.d
-#
-# > echo "${(j:.:)${(@v)K}}"
-# b.d
-#
+emulate -L zsh
 
 typeset -g C_PROMPT_NEWLINE=$'\n%{\r%}'
 
@@ -45,11 +11,14 @@ typeset -g G_PROMPT_DATA=""
 
 typeset -g G_LAST_PROMPT=""
 
+declare -gA ZLE_ASYNC_FDS=()
+
 #-------------------------------------------------------------------------------
 
 __async_prompt_query() {
   if ! (( $+commands[goprompt] )); then
     echo -n ""
+    return
   fi
 
   goprompt query \
@@ -59,7 +28,8 @@ __async_prompt_query() {
 
 __async_prompt_render() {
   if ! (( $+commands[goprompt] )); then
-    echo -n ""
+    echo -n "?>"
+    return
   fi
 
   local MODE="normal"
@@ -118,8 +88,6 @@ __prompt_precmd() {
 #-------------------------------------------------------------------------------
 # ZLE Async
 #-------------------------------------------------------------------------------
-
-declare -A ZLE_ASYNC_FDS=()
 
 __zle_async_fd_handler() {
   # NOTES: For my sanity, and for the curious:

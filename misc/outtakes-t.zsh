@@ -1,3 +1,38 @@
+#
+# ZSH Mindfuck:
+#
+# * ${(f)EXPR} splits value of expr by Newline
+# * ${(s/ /)EXPR} splits value of expr by space, or any other char instead of space
+# * ${(j/ /)EXPR) joins value of expr by space
+# * ${(kv)EXPR) if EXPR is an associative array, this gives you a compacted sequence of key, value pairs.
+# * ${(p...)EXPR) the p here makes the following magic to recognize Print Escapes ala '\n'
+# * ${(@...)EXPR) in double quotes puts each array result into separate word
+#
+# ZSH Mindfuck Examples:
+#
+# > typeset -A K=(a b c d)
+#
+# > echo ${(j:.:)${(kv)K}}
+# a.b.c.d
+#
+# > echo ${(j:.:)${(k)K}}
+# a.c
+#
+# > echo ${(j:.:)${(v)K}}
+# b.d
+#
+# > echo "${(j:.:)${(v)K}}"
+# b d #
+# > echo "${(@j:.:)${(v)K}}"
+# b d
+#
+# > echo "${(@j:.:)${(@v)K}}"
+# b.d
+#
+# > echo "${(j:.:)${(@v)K}}"
+# b.d
+#
+
 __zsh_buffer_fd_reader() {
   local D=$1
   local FD=$2

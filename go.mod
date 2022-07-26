@@ -1,4 +1,4 @@
-module EXP
+module github.com/NonLogicalDev/shell.async-goprompt
 
 go 1.18
 

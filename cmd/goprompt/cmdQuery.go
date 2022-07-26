@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	ps "github.com/mitchellh/go-ps"
@@ -65,10 +66,19 @@ func timeFMT(ts time.Time) string {
 }
 
 func cmdQueryRun(_ *cobra.Command, _ []string) error {
-	printCH := make(chan shellKV)
-	defer close(printCH)
+	tasks := new(AsyncTaskDispatcher)
 
-	go shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 600*time.Millisecond)
+	printCH := make(chan shellKV)
+	printerWG := new(sync.WaitGroup)
+	printerWG.Add(1)
+	go func() {
+		defer printerWG.Done()
+		shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 600*time.Millisecond)
+	}()
+	printerStop := func() {
+		close(printCH)
+		printerWG.Wait()
+	}
 	printPart := func(name string, value interface{}) {
 		printCH <- shellKV{name, value}
 	}
@@ -80,10 +90,12 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		printPart(_partStatus, fmt.Sprintf("%#v", *flgQCmdStatus))
 	}
 
-	wg := new(WaitGroupDispatcher)
-	defer wg.Wait()
+	defer func() {
+		tasks.Wait()
+		printerStop()
+	}()
 
-	wg.Dispatch(func() {
+	tasks.Dispatch(func() {
 		homeDir := os.Getenv("HOME")
 
 		if wd, err := os.Getwd(); err == nil {
@@ -103,7 +115,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		}
 	})
 
-	wg.Dispatch(func() {
+	tasks.Dispatch(func() {
 		pidCurr := os.Getpid()
 		var pidShell ps.Process
 
@@ -132,17 +144,9 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		printPart(_partPidParentExec, pidShellParent.Executable())
 	})
 
-	//wg.Dispatch(func() {
-	//	out, err := stringExec("git", "config", "--list")
-	//	printPart("debug_o", js(out))
-	//	if err != nil {
-	//		printPart("debug_e", js(err.Error()))
-	//	}
-	//})
-
-	wg.Dispatch(func() {
-		cwg := new(WaitGroupDispatcher)
-		defer cwg.Wait()
+	tasks.Dispatch(func() {
+		subTasks := new(AsyncTaskDispatcher)
+		defer subTasks.Wait()
 
 		if _, err := stringExec("git", "rev-parse", "--show-toplevel"); err == nil {
 			printPart(_partVcs, "git")
@@ -150,7 +154,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return
 		}
 
-		cwg.Dispatch(func() {
+		subTasks.Dispatch(func() {
 			if branch, err := stringExec("git", "branch", "--show-current"); err == nil {
 				branch = trim(branch)
 				if len(branch) > 0 {
@@ -168,8 +172,8 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			}
 		})
 
-		cwg.Dispatch(func() {
-			status, err := stringExec("git", "status", "--porcelain");
+		subTasks.Dispatch(func() {
+			status, err := stringExec("git", "status", "--porcelain")
 			if err != nil {
 				return
 			}
@@ -209,7 +213,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partVcsGitIdxExcluded, fOutOfIndex)
 		})
 
-		cwg.Dispatch(func() {
+		subTasks.Dispatch(func() {
 			if status, err := stringExec("git", "rev-list", "--left-right", "--count", "HEAD...@{u}"); err == nil {
 				parts := strings.SplitN(status, "\t", 2)
 				if len(parts) < 2 {
@@ -218,24 +222,25 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 
 				printPart(_partVcsLogAhead, parts[0])
 				printPart(_partVcsLogBehind, parts[1])
-
 			}
 		})
 	})
 
-	wg.Dispatch(func() {
+	tasks.Dispatch(func() {
 		var err error
 
-		cwg := new(WaitGroupDispatcher)
-		defer cwg.Wait()
+		subTasks := new(AsyncTaskDispatcher)
+		defer subTasks.Wait()
 
 		var stgSeriesLen string
 		if stgSeriesLen, err = stringExec("stg", "series", "-c"); err == nil {
 			printPart(_partVcsStg, "1")
 			printPart(_partVcsStgQlen, stgSeriesLen)
+		} else {
+			return
 		}
 
-		cwg.Dispatch(func() {
+		subTasks.Dispatch(func() {
 			if stgSeriesPos, err := stringExec("stg", "series", "-cA"); err == nil {
 				printPart(_partVcsStgQpos, stgSeriesPos)
 			}
@@ -248,7 +253,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return
 		}
 
-		cwg.Dispatch(func() {
+		subTasks.Dispatch(func() {
 			gitSHA, _ := stringExec("stg", "id")
 			stgSHA, _ := stringExec("stg", "id", stgPatchTop)
 
