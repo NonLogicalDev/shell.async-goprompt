@@ -7,11 +7,11 @@ import (
 	"os/signal"
 	"os/user"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	ps "github.com/mitchellh/go-ps"
+	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
 )
 
@@ -46,6 +46,7 @@ const (
 	_partWorkDir      = "wd"
 	_partWorkDirShort = "wd_trim"
 
+	_partPid           = "pid"
 	_partPidShell      = "pid_shell"
 	_partPidShellExec  = "pid_shell_exec"
 	_partPidParent     = "pid_parent"
@@ -82,16 +83,16 @@ func handleQUIT() context.CancelFunc {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill, syscall.SIGTERM)
 
-	// defer flog("terminating")
+	defer debugLog("quit: terminating")
 
 	// Stdout watchdog
 	go func() {
-		// flog("start watchdog " + fmt.Sprintf("%d", os.Getppid()))
+		// debugLog("start watchdog " + fmt.Sprintf("%d", os.Getppid()))
 		defer bgctxCancel()
 
 		for {
 			if _, err := os.Stdout.Stat(); err != nil {
-				// flog("terminating early")
+				debugLog("quit: terminating early")
 				return
 			}
 
@@ -100,7 +101,7 @@ func handleQUIT() context.CancelFunc {
 			case <-tick:
 				continue
 			case <-sig:
-				// flog("terminating early")
+				debugLog("quit: terminating early")
 				return
 			case <-bgctx.Done():
 				return
@@ -112,6 +113,7 @@ func handleQUIT() context.CancelFunc {
 }
 
 func cmdQueryRun(_ *cobra.Command, _ []string) error {
+	debugLog("query: start")
 	defer bgctxCancel()
 
 	printerStop, printPart := startPrinter()
@@ -132,7 +134,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		}()
 	}
 
-	tasks := new(AsyncTaskDispatcher)
+	tasks := pool.New().WithContext(bgctx)
 	defer func() {
 		tasks.Wait()
 		printPart("done", "ok")
@@ -145,7 +147,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		printPart(_partStatus, fmt.Sprintf("%#v", *flgQCmdStatus))
 	}
 
-	tasks.Dispatch(func() {
+	tasks.Go(func(ctx context.Context) error {
 		homeDir := os.Getenv("HOME")
 
 		if wd, err := os.Getwd(); err == nil {
@@ -173,12 +175,14 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 				printPart(_partDuration, diff)
 			}
 		}
+
+		return nil
 	})
 
-	tasks.Dispatch(func() {
+	tasks.Go(func(_ context.Context) error {
 		psChain, err := moduleFindProcessChain()
 		if err != nil {
-			return
+			return nil
 		}
 
 		if len(psChain) > 3 {
@@ -206,16 +210,18 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partPidRemote, pidRemote.Pid())
 			printPart(_partPidRemoteExec, pidShellRemoteExecName)
 		}
+
+		return nil
 	})
 
-	tasks.Dispatch(func() {
+	tasks.Go(func(context.Context) error {
 		subTasks := new(AsyncTaskDispatcher)
 		defer subTasks.Wait()
 
 		if _, err := stringExec("git", "rev-parse", "--show-toplevel"); err == nil {
 			printPart(_partVcs, "git")
 		} else {
-			return
+			return nil
 		}
 
 		subTasks.Dispatch(func() {
@@ -288,9 +294,11 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 				printPart(_partVcsLogBehind, parts[1])
 			}
 		})
+
+		return nil
 	})
 
-	tasks.Dispatch(func() {
+	tasks.Go(func(context.Context) error {
 		var err error
 
 		subTasks := new(AsyncTaskDispatcher)
@@ -301,7 +309,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partVcsStg, "1")
 			printPart(_partVcsStgQlen, stgSeriesLen)
 		} else {
-			return
+			return nil
 		}
 
 		subTasks.Dispatch(func() {
@@ -314,7 +322,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		if stgPatchTop, err = stringExec("stg", "top"); err == nil {
 			printPart(_partVcsStgTop, stgPatchTop)
 		} else {
-			return
+			return nil
 		}
 
 		subTasks.Dispatch(func() {
@@ -327,27 +335,11 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 				printPart(_partVcsStgDirty, 0)
 			}
 		})
+
+		return nil
 	})
 
 	return nil
-}
-
-func startPrinter() (func(), func(name string, value interface{})) {
-	printCH := make(chan shellKV)
-	printerWG := new(sync.WaitGroup)
-	printerWG.Add(1)
-	go func() {
-		defer printerWG.Done()
-		shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 600*time.Millisecond)
-	}()
-	printerStop := func() {
-		close(printCH)
-		printerWG.Wait()
-	}
-	printPart := func(name string, value interface{}) {
-		printCH <- shellKV{name, value}
-	}
-	return printerStop, printPart
 }
 
 func moduleFindProcessChain() ([]ps.Process, error) {
@@ -367,4 +359,28 @@ func moduleFindProcessChain() ([]ps.Process, error) {
 	}
 
 	return pidChain, nil
+}
+
+
+func startPrinter() (func(), func(name string, value interface{})) {
+	debugLog("query-printer: start")
+	defer debugLog("query-printer: stop")
+
+	printCH := make(chan shellKV)
+	doneSIG := make(chan struct{})
+	go func() {
+		defer close(doneSIG)
+		shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 100*time.Millisecond)
+	}()
+
+	printerStop := func() {
+		close(printCH)
+		<-doneSIG
+	}
+	printPart := func(name string, value interface{}) {
+		printCH <- shellKV{name, value}
+	}
+
+	printPart(_partPid, os.Getpid())
+	return printerStop, printPart
 }

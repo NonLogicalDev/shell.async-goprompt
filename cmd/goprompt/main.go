@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 var bgctx, bgctxCancel = context.WithCancel(context.Background())
@@ -12,10 +13,14 @@ var (
 	cmd = &cobra.Command{
 		Use: "goprompt",
 	}
+	envLogFile = os.Getenv("GOPROMPT_LOG_FILE")
 )
 
-func flog(msg string) {
-	f, err := os.OpenFile(os.Getenv("HOME")+"/.goprompt",
+func debugLog(msg string, args ...[]interface{}) {
+	if len(envLogFile) == 0 {
+		return
+	}
+	f, err := os.OpenFile(envLogFile,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
