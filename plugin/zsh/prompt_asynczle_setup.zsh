@@ -126,6 +126,8 @@ __zle_async_dispatch() {
     __zle_async_detach "$OLD_ZLE_FD" 2>/dev/null
   fi
 
+  local ZLE_FD
+
   # Create File Descriptor and attach to async command
   exec {ZLE_FD}< <( "${command[@]}" )
 

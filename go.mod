@@ -1,6 +1,6 @@
 module github.com/NonLogicalDev/shell.async-goprompt
 
-go 1.18
+go 1.20
 
 require (
 	github.com/gookit/color v1.5.1
