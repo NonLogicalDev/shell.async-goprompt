@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"os/user"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	ps "github.com/mitchellh/go-ps"
@@ -24,7 +28,15 @@ var (
 		"preexec-ts", 0,
 		"pre-execution timestamp to gauge how log execution took",
 	)
+	flgQTimeout = cmdQuery.PersistentFlags().Duration(
+		"timeout", 0,
+		"timeout after which to give up",
+	)
 )
+
+func init() {
+	cmdQuery.RunE = cmdQueryRun
+}
 
 const (
 	_partStatus    = "st"
@@ -38,6 +50,11 @@ const (
 	_partPidShellExec  = "pid_shell_exec"
 	_partPidParent     = "pid_parent"
 	_partPidParentExec = "pid_parent_exec"
+	_partPidRemote     = "pid_remote"
+	_partPidRemoteExec = "pid_remote_exec"
+
+	_partSessionUsername = "session_username"
+	_partSessionHostname = "session_hostname"
 
 	_partVcs       = "vcs"
 	_partVcsBranch = "vcs_br"
@@ -57,31 +74,69 @@ const (
 	_partVcsGitIdxExcluded = "git_idx_excl"
 )
 
-func init() {
-	cmdQuery.RunE = cmdQueryRun
-}
-
 func timeFMT(ts time.Time) string {
 	return ts.Format("15:04:05 01/02/06")
 }
 
-func cmdQueryRun(_ *cobra.Command, _ []string) error {
-	tasks := new(AsyncTaskDispatcher)
+func handleQUIT() context.CancelFunc {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, os.Kill, syscall.SIGTERM)
 
-	printCH := make(chan shellKV)
-	printerWG := new(sync.WaitGroup)
-	printerWG.Add(1)
+	// defer flog("terminating")
+
+	// Stdout watchdog
 	go func() {
-		defer printerWG.Done()
-		shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 600*time.Millisecond)
+		// flog("start watchdog " + fmt.Sprintf("%d", os.Getppid()))
+		defer bgctxCancel()
+
+		for {
+			if _, err := os.Stdout.Stat(); err != nil {
+				// flog("terminating early")
+				return
+			}
+
+			tick := time.After(100 * time.Millisecond)
+			select {
+			case <-tick:
+				continue
+			case <-sig:
+				// flog("terminating early")
+				return
+			case <-bgctx.Done():
+				return
+			}
+		}
 	}()
-	printerStop := func() {
-		close(printCH)
-		printerWG.Wait()
+
+	return bgctxCancel
+}
+
+func cmdQueryRun(_ *cobra.Command, _ []string) error {
+	defer bgctxCancel()
+
+	printerStop, printPart := startPrinter()
+	defer printerStop()
+
+	if *flgQTimeout != 0 {
+		go func() {
+			// Timeout handler
+			select {
+			case <-bgctx.Done():
+				return
+			case <-time.After(*flgQTimeout):
+				printPart("done", "timeout")
+				printerStop()
+				bgctxCancel()
+				os.Exit(1)
+			}
+		}()
 	}
-	printPart := func(name string, value interface{}) {
-		printCH <- shellKV{name, value}
-	}
+
+	tasks := new(AsyncTaskDispatcher)
+	defer func() {
+		tasks.Wait()
+		printPart("done", "ok")
+	}()
 
 	nowTS := time.Now()
 	printPart(_partTimestamp, timeFMT(nowTS))
@@ -89,11 +144,6 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	if *flgQCmdStatus != 0 {
 		printPart(_partStatus, fmt.Sprintf("%#v", *flgQCmdStatus))
 	}
-
-	defer func() {
-		tasks.Wait()
-		printerStop()
-	}()
 
 	tasks.Dispatch(func() {
 		homeDir := os.Getenv("HOME")
@@ -103,6 +153,16 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 
 			printPart(_partWorkDir, wdh)
 			printPart(_partWorkDirShort, trimPath(wdh))
+		}
+
+		sessionUser, err := user.Current()
+		if err == nil {
+			printPart(_partSessionUsername, sessionUser.Username)
+		}
+
+		sessionHostname, err := os.Hostname()
+		if err == nil {
+			printPart(_partSessionHostname, sessionHostname)
 		}
 
 		if *flgQPreexecTS != 0 {
@@ -116,32 +176,36 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	})
 
 	tasks.Dispatch(func() {
-		pidCurr := os.Getpid()
-		var pidShell ps.Process
-
-		for i := 0; i < 3; i++ {
-			var err error
-			pidShell, err = ps.FindProcess(pidCurr)
-			if err != nil {
-				return
-			}
-			pidCurr = pidShell.PPid()
-		}
-
-		if pidShell == nil {
-			return
-		}
-
-		printPart(_partPidShell, pidShell.Pid())
-		printPart(_partPidShellExec, pidShell.Executable())
-
-		pidShellParent, err := ps.FindProcess(pidShell.PPid())
+		psChain, err := moduleFindProcessChain()
 		if err != nil {
 			return
 		}
 
-		printPart(_partPidParent, pidShellParent.Pid())
-		printPart(_partPidParentExec, pidShellParent.Executable())
+		if len(psChain) > 3 {
+			pidShell := psChain[1]
+			pidShellParent := psChain[2]
+
+			pidShellExecName, _, _ := strings.Cut(pidShell.Executable(), " ")
+			printPart(_partPidShell, pidShell.Pid())
+			printPart(_partPidShellExec, pidShellExecName)
+
+			pidShellParentExecName, _, _ := strings.Cut(pidShellParent.Executable(), " ")
+			printPart(_partPidParent, pidShellParent.Pid())
+			printPart(_partPidParentExec, pidShellParentExecName)
+		}
+
+		var pidRemote ps.Process
+		for _, psInfo := range psChain {
+			if strings.Contains(psInfo.Executable(), "ssh") {
+				pidRemote = psInfo
+				break
+			}
+		}
+		if pidRemote != nil {
+			pidShellRemoteExecName, _, _ := strings.Cut(pidRemote.Executable(), " ")
+			printPart(_partPidRemote, pidRemote.Pid())
+			printPart(_partPidRemoteExec, pidShellRemoteExecName)
+		}
 	})
 
 	tasks.Dispatch(func() {
@@ -266,4 +330,41 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	})
 
 	return nil
+}
+
+func startPrinter() (func(), func(name string, value interface{})) {
+	printCH := make(chan shellKV)
+	printerWG := new(sync.WaitGroup)
+	printerWG.Add(1)
+	go func() {
+		defer printerWG.Done()
+		shellKVStaggeredPrinter(printCH, 20*time.Millisecond, 600*time.Millisecond)
+	}()
+	printerStop := func() {
+		close(printCH)
+		printerWG.Wait()
+	}
+	printPart := func(name string, value interface{}) {
+		printCH <- shellKV{name, value}
+	}
+	return printerStop, printPart
+}
+
+func moduleFindProcessChain() ([]ps.Process, error) {
+	psPTR := os.Getpid()
+	var pidChain []ps.Process
+
+	for {
+		if psPTR == 0 {
+			break
+		}
+		psInfo, err := ps.FindProcess(psPTR)
+		if err != nil {
+			return nil, err
+		}
+		pidChain = append(pidChain, psInfo)
+		psPTR = psInfo.PPid()
+	}
+
+	return pidChain, nil
 }

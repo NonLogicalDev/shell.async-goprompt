@@ -12,8 +12,9 @@ typeset -g G_PROMPT_DATA=""
 typeset -g G_LAST_PROMPT=""
 
 declare -gA ZLE_ASYNC_FDS=()
+declare -gA ZLE_ASYNC_PIDS=()
 
-typeset -g ZSH_ASYNC_PROMPT_TIMEOUT=${ZSH_ASYNC_PROMPT_TIMEOUT:-5s}
+ZSH_ASYNC_TIMEOUT=${ZSH_ASYNC_TIMEOUT:-0}
 
 #-------------------------------------------------------------------------------
 
@@ -25,8 +26,7 @@ __async_prompt_query() {
 
   goprompt query \
     --cmd-status "$G_LAST_STATUS" \
-    --preexec-ts "$G_PREEXEC_TS" \
-    --timeout "$ZSH_ASYNC_PROMPT_TIMEOUT"
+    --preexec-ts "$G_PREEXEC_TS"
 }
 
 __async_prompt_render() {
@@ -40,14 +40,8 @@ __async_prompt_render() {
     MODE="edit"
   fi
 
-  local LOADING=1
-  if [[ $G_ASYNC_DONE -eq 1 ]]; then
-    LOADING=0
-  fi
-
   goprompt render \
     --prompt-mode "$MODE" \
-    --prompt-loading="$LOADING" \
     --color-mode "zsh"
 }
 
@@ -122,16 +116,23 @@ __zle_async_dispatch() {
 
   # Close existing file descriptor for this handler.
   local OLD_ZLE_FD=${ZLE_ASYNC_FDS["${dispatch_handler}"]}
+  local OLD_ZLE_PID=${ZLE_ASYNC_PIDS["${dispatch_handler}"]}
   if [[ -n $OLD_ZLE_FD ]]; then
     __zle_async_detach "$OLD_ZLE_FD" 2>/dev/null
   fi
+  if [[ -n $OLD_ZLE_PID ]]; then
+    # echo "$$: KILLING(2): $OLD_ZLE_PID" > ~/.goprompt
+    kill -2 $OLD_ZLE_PID  2>/dev/null || true
+  fi
 
   # Create File Descriptor and attach to async command
-  exec {ZLE_FD}< <( "${command[@]}" )
+  # exec {ZLE_FD}< <( "${command[@]}" )
+  __launch_coproc ZLE_FD ZLE_PID "${command[@]}"
 
   # Attach file a ZLE handler to file descriptor.
   zle -F $ZLE_FD "${dispatch_handler}"
   ZLE_ASYNC_FDS["${dispatch_handler}"]="$ZLE_FD"
+  ZLE_ASYNC_PIDS["${dispatch_handler}"]="$ZLE_PID"
 }
 
 __zle_async_detach() {
@@ -142,6 +143,28 @@ __zle_async_detach() {
   zle -F "$ZLE_FD"
 }
 
+__launch_coproc() {
+	local FD_VAR=$1
+	local PID_VAR=$2
+	shift 2
+
+	local command=( "$@" )
+
+	local tmpdir=$(mktemp -d)
+	mkfifo "$tmpdir/pipe.proc"
+
+	local output_fd
+	exec {output_fd}< <(
+		{ sh -c 'echo $PPID' && : } >"$tmpdir/pipe.proc";
+		"${command[@]}"
+	)
+	local coproc_pid=$(cat <"$tmpdir/pipe.proc")
+
+	command rm -rf "$tmpdir"
+
+	eval "$FD_VAR='$output_fd'"
+	eval "$PID_VAR='$coproc_pid'"
+}
 
 #-------------------------------------------------------------------------------
 

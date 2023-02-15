@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -91,12 +92,16 @@ LOOP:
 //: ----------------------------------------------------------------------------
 
 func stringExec(path string, args ...string) (string, error) {
-	out, err := shellout.New(bgctx,
+	ctx, ctxCancel := context.WithTimeout(bgctx, 10*time.Second)
+	defer ctxCancel()
+
+	out, err := shellout.New(ctx,
 		shellout.Args(path, args...),
 		shellout.EnvSet(map[string]string{
 			"GIT_OPTIONAL_LOCKS": "0",
 		}),
 	).RunString()
+
 	return trim(out), err
 }
 

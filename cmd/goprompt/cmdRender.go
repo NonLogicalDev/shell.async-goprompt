@@ -37,10 +37,15 @@ var (
 	)
 )
 
+func init() {
+	cmdRender.RunE = cmdRenderRun
+}
+
 var (
 	redC     = fmt.Sprint
 	greenC   = fmt.Sprint
 	yellowC  = fmt.Sprint
+	greyC    = fmt.Sprint
 	blueC    = fmt.Sprint
 	magentaC = fmt.Sprint
 	normalC  = fmt.Sprint
@@ -59,17 +64,15 @@ func setColorMode(mode string) {
 		yellowC = wrapC("%F{yellow}", "%F{reset}")
 		blueC = wrapC("%F{blue}", "%F{reset}")
 		magentaC = wrapC("%F{magenta}", "%F{reset}")
+		greyC = wrapC("%F{black}", "%F{reset}")
 	} else if mode == "ascii" {
 		redC = color.Red.Render
 		greenC = color.Green.Render
 		yellowC = color.Yellow.Render
 		blueC = color.Blue.Render
 		magentaC = color.Magenta.Render
+		greyC = color.Black.Render
 	}
-}
-
-func init() {
-	cmdRender.RunE = cmdRenderRun
 }
 
 func cmdRenderRun(_ *cobra.Command, _ []string) error {
@@ -192,14 +195,22 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 	}
 	partsBottom = append(partsBottom, fmt.Sprintf("[%v]", cmdTS))
 
+	if len(p[_partPidRemote]) != 0 {
+		partsBottom = append(partsBottom, greyC(fmt.Sprintf("%v@%v", p[_partSessionUsername], p[_partSessionHostname])))
+	}
+
 	promptMarker := magentaC(">")
 	if *flgRMode == "edit" {
 		promptMarker = redC("<")
 	}
 
-	promptStatusMarker := ":: "
-	if *flgRLoading {
-		promptStatusMarker = ":? "
+	promptStatusMarker := ":? "
+	if status, ok := p["done"]; ok {
+		if status == "ok" {
+			promptStatusMarker = ":: "
+		} else if status == "timeout" {
+			promptStatusMarker = "xx "
+		}
 	}
 
 	promptLines := []string{""}
