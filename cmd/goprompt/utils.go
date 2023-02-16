@@ -2,50 +2,37 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/NonLogicalDev/shell.async-goprompt/pkg/shellout"
+	ps "github.com/mitchellh/go-ps"
 )
 
-type AsyncTaskDispatcher struct {
-	wg sync.WaitGroup
+// ----------------------------------------------------------------------------
+
+func timeFMT(ts time.Time) string {
+	return ts.Format("15:04:05 01/02/06")
 }
 
-func (d *AsyncTaskDispatcher) Dispatch(fn func()) {
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
-		fn()
-	}()
-}
-
-func (d *AsyncTaskDispatcher) Wait() {
-	d.wg.Wait()
-}
-
-//: ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 type shellKV struct {
 	name  string
 	value interface{}
 }
 
-func (kv shellKV) Print() {
-	fmt.Println(kv.String())
-}
-
 func (kv shellKV) String() string {
 	return fmt.Sprintf("%s\t%v", kv.name, kv.value)
 }
 
+// ----------------------------------------------------------------------------
+
 func shellKVStaggeredPrinter(
-	printCH chan shellKV,
+	printCH <-chan shellKV,
 
 	dFirst time.Duration,
 	d time.Duration,
@@ -53,8 +40,11 @@ func shellKVStaggeredPrinter(
 	var parts []shellKV
 
 	printParts := func(parts []shellKV) {
+		if len(parts) == 0 {
+			return
+		}
 		for _, p := range parts {
-			p.Print()
+			fmt.Println(p.String())
 		}
 		if len(parts) > 0 {
 			fmt.Println()
@@ -62,21 +52,16 @@ func shellKVStaggeredPrinter(
 		os.Stdout.Sync()
 	}
 
-	timerFirst := time.NewTimer(dFirst)
-	timer := time.NewTimer(d)
+	timer := time.NewTimer(dFirst)
 
-LOOP:
+printLoop:
 	for {
 		select {
 		case rx, ok := <-printCH:
 			if !ok {
-				break LOOP
+				break printLoop
 			}
 			parts = append(parts, rx)
-
-		case <-timerFirst.C:
-			printParts(parts)
-			parts = nil
 
 		case <-timer.C:
 			printParts(parts)
@@ -89,7 +74,7 @@ LOOP:
 	parts = nil
 }
 
-//: ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 func stringExec(path string, args ...string) (string, error) {
 	ctx, ctxCancel := context.WithTimeout(bgctx, 10*time.Second)
@@ -105,9 +90,23 @@ func stringExec(path string, args ...string) (string, error) {
 	return trim(out), err
 }
 
-func toJSON(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
+func moduleFindProcessChain() ([]ps.Process, error) {
+	psPTR := os.Getpid()
+	var pidChain []ps.Process
+
+	for {
+		if psPTR == 0 {
+			break
+		}
+		psInfo, err := ps.FindProcess(psPTR)
+		if err != nil {
+			return nil, err
+		}
+		pidChain = append(pidChain, psInfo)
+		psPTR = psInfo.PPid()
+	}
+
+	return pidChain, nil
 }
 
 func trimPath(s string) string {

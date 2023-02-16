@@ -2,51 +2,77 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	goprompt "github.com/NonLogicalDev/shell.async-goprompt"
+	"github.com/kballard/go-shellquote"
 	"github.com/spf13/cobra"
 )
 
-var installDesc = `
-To install run the following:
+var cmdInstallHelpLong = `
+# To install run the following:
 
-	$ goprompt install zsh.zshrc >> .zshrc
+	$ goprompt install zsh >> .zshrc
 
-FILE options:
+# [FILE] options:
 
-	* zsh.zshrc
+	* zsh
 	* zsh.plugin
+`
+
+const defaultContent = `
+# To try for just this session run the following:
+
+	$ eval "$({{goprompt}} install zsh)"
+
+# To install run the following:
+
+	$ {{goprompt}} install zsh >> .zshrc
 `
 
 var (
 	cmdInstall = &cobra.Command{
 		Use:   "install [FILE]",
-		Short: "install the integration",
-		Long: trim(installDesc),
-		Args: cobra.MinimumNArgs(1),
+		Short: "print out the shell script to setup prompt",
+		Long: trim(cmdInstallHelpLong),
 	}
-)
-
-const (
-	_zshRc = "zshrc"
-	_zshPlugin = "zshplugin"
 )
 
 func init() {
 	cmdInstall.RunE = cmdInstallRun
 }
 
-// TODO: bundle in the plugin directory, and provide a way to extract it into users directory of choice.
+func replacePlaceholders(content string) string {
+	goPromptExec := os.Args[0]
+	if strings.Contains(goPromptExec, "/") {
+		if fullPath, err := filepath.Abs(goPromptExec); err == nil {
+			goPromptExec = fullPath
+		}
+	}
+	goPromptExec = shellquote.Join(goPromptExec)
+	content = strings.ReplaceAll(content, "{{goprompt}}", goPromptExec)
+	content = strings.ReplaceAll(content, "${GOPROMPT}", goPromptExec)
+	return content
+}
 
 func cmdInstallRun(command *cobra.Command, args []string) error {
+	argFile := ""
+	if len(args) > 0 {
+		argFile = args[0]
+	}
+
 	var content string
-	switch args[0] {
-	case "zsh.zshrc":
+	switch argFile {
+	case "zsh":
 		f, _ := goprompt.ZSHPluginFiles.ReadFile("plugin/zsh/prompt_install.zsh")
-		content = string(f)
+		content = replacePlaceholders(string(f))
 	case "zsh.plugin":
 		f, _ := goprompt.ZSHPluginFiles.ReadFile("plugin/zsh/prompt_asynczle_setup.zsh")
-		content = string(f)
+		content = replacePlaceholders(string(f))
+	default:
+		content = replacePlaceholders(defaultContent)
 	}
 	fmt.Println(content)
 	return nil

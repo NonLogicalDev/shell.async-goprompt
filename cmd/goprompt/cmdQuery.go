@@ -38,6 +38,10 @@ func init() {
 	cmdQuery.RunE = cmdQueryRun
 }
 
+func mkWgPool() pool.ContextPool {
+	return *pool.New().WithContext(bgctx)
+}
+
 const (
 	_partStatus    = "st"
 	_partTimestamp = "ts"
@@ -64,20 +68,16 @@ const (
 	_partVcsLogAhead  = "vcs_log_ahead"
 	_partVcsLogBehind = "vcs_log_behind"
 
-	_partVcsStg      = "stg"
-	_partVcsStgQlen  = "stg_qlen"
-	_partVcsStgQpos  = "stg_qpos"
-	_partVcsStgTop   = "stg_top"
-	_partVcsStgDirty = "stg_dirty"
+	_partVcsStg      = "vcs_git_stg"
+	_partVcsStgQlen  = "vcs_git_stg_qlen"
+	_partVcsStgQpos  = "vcs_git_stg_qpos"
+	_partVcsStgTop   = "vcs_git_stg_top"
+	_partVcsStgDirty = "vcs_git_stg_dirty"
 
-	_partVcsGitIdxTotal    = "git_idx_total"
-	_partVcsGitIdxIncluded = "git_idx_incl"
-	_partVcsGitIdxExcluded = "git_idx_excl"
+	_partVcsGitIdxTotal    = "vcs_git_idx_total"
+	_partVcsGitIdxIncluded = "vcs_git_idx_incl"
+	_partVcsGitIdxExcluded = "vcs_git_idx_excl"
 )
-
-func timeFMT(ts time.Time) string {
-	return ts.Format("15:04:05 01/02/06")
-}
 
 func handleQUIT() context.CancelFunc {
 	sig := make(chan os.Signal, 1)
@@ -134,7 +134,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		}()
 	}
 
-	tasks := pool.New().WithContext(bgctx)
+	tasks := mkWgPool()
 	defer func() {
 		tasks.Wait()
 		printPart("done", "ok")
@@ -215,7 +215,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	})
 
 	tasks.Go(func(context.Context) error {
-		subTasks := new(AsyncTaskDispatcher)
+		subTasks := mkWgPool()
 		defer subTasks.Wait()
 
 		if _, err := stringExec("git", "rev-parse", "--show-toplevel"); err == nil {
@@ -224,12 +224,12 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return nil
 		}
 
-		subTasks.Dispatch(func() {
+		subTasks.Go(func(ctx context.Context) error {
 			if branch, err := stringExec("git", "branch", "--show-current"); err == nil {
 				branch = trim(branch)
 				if len(branch) > 0 {
 					printPart(_partVcsBranch, trim(branch))
-					return
+					return nil
 				}
 			}
 
@@ -237,20 +237,22 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 				branch = trim(branch)
 				if len(branch) > 0 {
 					printPart(_partVcsBranch, trim(branch))
-					return
+					return nil
 				}
 			}
+
+			return nil
 		})
 
-		subTasks.Dispatch(func() {
+		subTasks.Go(func(context.Context) error {
 			status, err := stringExec("git", "status", "--porcelain")
 			if err != nil {
-				return
+				return nil
 			}
 
 			if len(status) == 0 {
 				printPart(_partVcsDirty, 0)
-				return
+				return nil
 			}
 
 			printPart(_partVcsDirty, 1)
@@ -281,9 +283,11 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partVcsGitIdxTotal, fTotal)
 			printPart(_partVcsGitIdxIncluded, fInIndex)
 			printPart(_partVcsGitIdxExcluded, fOutOfIndex)
+
+			return nil
 		})
 
-		subTasks.Dispatch(func() {
+		subTasks.Go(func(context.Context) error {
 			if status, err := stringExec("git", "rev-list", "--left-right", "--count", "HEAD...@{u}"); err == nil {
 				parts := strings.SplitN(status, "\t", 2)
 				if len(parts) < 2 {
@@ -293,6 +297,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 				printPart(_partVcsLogAhead, parts[0])
 				printPart(_partVcsLogBehind, parts[1])
 			}
+			return nil
 		})
 
 		return nil
@@ -301,8 +306,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	tasks.Go(func(context.Context) error {
 		var err error
 
-		subTasks := new(AsyncTaskDispatcher)
-		defer subTasks.Wait()
+		subTasks := mkWgPool()
 
 		var stgSeriesLen string
 		if stgSeriesLen, err = stringExec("stg", "series", "-c"); err == nil {
@@ -312,10 +316,11 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return nil
 		}
 
-		subTasks.Dispatch(func() {
+		subTasks.Go(func(context.Context) error {
 			if stgSeriesPos, err := stringExec("stg", "series", "-cA"); err == nil {
 				printPart(_partVcsStgQpos, stgSeriesPos)
 			}
+			return nil
 		})
 
 		var stgPatchTop string
@@ -325,7 +330,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return nil
 		}
 
-		subTasks.Dispatch(func() {
+		subTasks.Go(func(context.Context) error {
 			gitSHA, _ := stringExec("stg", "id")
 			stgSHA, _ := stringExec("stg", "id", stgPatchTop)
 
@@ -334,6 +339,7 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			} else {
 				printPart(_partVcsStgDirty, 0)
 			}
+			return nil
 		})
 
 		return nil
@@ -341,26 +347,6 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 
 	return nil
 }
-
-func moduleFindProcessChain() ([]ps.Process, error) {
-	psPTR := os.Getpid()
-	var pidChain []ps.Process
-
-	for {
-		if psPTR == 0 {
-			break
-		}
-		psInfo, err := ps.FindProcess(psPTR)
-		if err != nil {
-			return nil, err
-		}
-		pidChain = append(pidChain, psInfo)
-		psPTR = psInfo.PPid()
-	}
-
-	return pidChain, nil
-}
-
 
 func startPrinter() (func(), func(name string, value interface{})) {
 	debugLog("query-printer: start")

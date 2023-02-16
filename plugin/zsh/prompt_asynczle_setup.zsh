@@ -15,22 +15,35 @@ declare -gA ZLE_ASYNC_FDS=()
 
 typeset -g ZSH_ASYNC_PROMPT_TIMEOUT=${ZSH_ASYNC_PROMPT_TIMEOUT:-5s}
 
+typeset -g G_GOPROMPT=${GOPROMPT}
+
 #-------------------------------------------------------------------------------
 
+__async_check_exec() {
+  local exec_name="$1"
+  if (( $+commands[${exec_name}] )); then
+    return 0
+  fi
+  if [[ -e ${exec_name} ]]; then
+    return 0
+  fi
+  return 1
+}
+
 __async_prompt_query() {
-  if ! (( $+commands[goprompt] )); then
+  if ! __async_check_exec "${G_GOPROMPT}"; then
     echo -n ""
     return
   fi
 
-  goprompt query \
+  ${G_GOPROMPT} query \
     --cmd-status "$G_LAST_STATUS" \
     --preexec-ts "$G_PREEXEC_TS" \
     --timeout "$ZSH_ASYNC_PROMPT_TIMEOUT"
 }
 
 __async_prompt_render() {
-  if ! (( $+commands[goprompt] )); then
+  if ! __async_check_exec "${G_GOPROMPT}"; then
     echo -n "?>"
     return
   fi
@@ -45,7 +58,7 @@ __async_prompt_render() {
     LOADING=0
   fi
 
-  goprompt render \
+  ${G_GOPROMPT} render \
     --prompt-mode "$MODE" \
     --prompt-loading="$LOADING" \
     --color-mode "zsh"

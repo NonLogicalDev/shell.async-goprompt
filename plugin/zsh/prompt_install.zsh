@@ -1,6 +1,6 @@
 # PROMPT_ASYNC_ZLE: ------------------------------------------------------------
-if (($+commands[goprompt])); then
+if (($+commands[${GOPROMPT}])) || [[ -e ${GOPROMPT} ]]; then
 	autoload -Uz promptinit
-	promptinit && eval "$(goprompt install zsh.plugin)"
+	promptinit && eval "$(${GOPROMPT} install zsh.plugin)"
 fi
 # ------------------------------------------------------------------------------
