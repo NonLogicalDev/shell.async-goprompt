@@ -3,7 +3,7 @@ before:
     - go mod tidy
 builds:
   - main: ./cmd/goprompt
-    binary: frk
+    binary: goprompt
     env:
       - CGO_ENABLED=0
     goos:

@@ -24,20 +24,7 @@ And the main POC query/rendering logic is implemented in GO
 ## Install
 
 ```
-$ eval "$(gimme 1.18.3)"
+$ eval "$(gimme 1.20)"
 $ make install
-$ make setup >> ~/.zshrc
-```
-
-Assuming GoPrompt installed in `~/bin` and zsh func in `~/.local/share/zsh-funcs`
-
-`make setup` will add the following to your `~/.zshrc`:
-
-```
-# PROMPT_ASYNC_ZLE: ------------------------------------------------------------
-path+=( "$HOME/bin" )
-fpath+=( "$HOME/.local/share/zsh-funcs" )
-autoload -Uz promptinit
-promptinit && prompt_asynczle_setup
-# ------------------------------------------------------------------------------
+$ goprompt install zsh.zshrc >> ~/.zshrc
 ```

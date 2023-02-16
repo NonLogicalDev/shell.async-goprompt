@@ -36,12 +36,12 @@ func debugLog(msg string, args ...[]interface{}) {
 func init() {
 	cmd.AddCommand(cmdQuery)
 	cmd.AddCommand(cmdRender)
+	cmd.AddCommand(cmdInstall)
 }
 
 func main() {
-
 	err := cmd.ExecuteContext(bgctx)
 	if err != nil {
-		panic(err)
+		os.Exit(1)
 	}
 }
