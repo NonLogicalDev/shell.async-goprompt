@@ -25,6 +25,6 @@ And the main POC query/rendering logic is implemented in GO
 
 ```
 $ eval "$(gimme 1.20)"
-$ make install
-$ goprompt install zsh.zshrc >> ~/.zshrc
+$ make install USR_BIN_DIR="$HOME/bin"
+$ goprompt install zsh >> ~/.zshrc
 ```
