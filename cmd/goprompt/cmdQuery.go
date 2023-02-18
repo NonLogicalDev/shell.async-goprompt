@@ -77,6 +77,12 @@ const (
 	_partVcsGitIdxTotal    = "vcs_git_idx_total"
 	_partVcsGitIdxIncluded = "vcs_git_idx_incl"
 	_partVcsGitIdxExcluded = "vcs_git_idx_excl"
+
+	_partVcsSaplRev             = "vcs_sapling_rev"
+	_partVcsSaplNode            = "vcs_sapling_node"
+	_partVcsSaplBookmarks       = "vcs_sapling_bookmarks"
+	_partVcsSaplBookmarkActive  = "vcs_sapling_bookmarks_active"
+	_partVcsSaplBookmarksRemote = "vcs_sapling_bookmarks_remote"
 )
 
 func handleQUIT() context.CancelFunc {
@@ -210,6 +216,51 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partPidRemote, pidRemote.Pid())
 			printPart(_partPidRemoteExec, pidShellRemoteExecName)
 		}
+
+		return nil
+	})
+
+	tasks.Go(func(context.Context) error {
+		subTasks := mkWgPool()
+		defer subTasks.Wait()
+
+		saplingTemplate := `{rev}\t{node}\t{join(remotenames, "#")}\t{join(bookmarks, "#")}\t{activebookmark}\t{ifcontains(rev, revset("."), "@")}\n`
+
+		if _, err := stringExec("sl", "root"); err == nil {
+			printPart(_partVcs, "sapling")
+		} else {
+			return nil
+		}
+
+		subTasks.Go(func(ctx context.Context) error {
+			if revInfo, err := stringExec("sl", "log", "-r", ".", "--template", saplingTemplate); err == nil {
+				info := strings.Split(revInfo, "\t")
+				printPart(_partVcsSaplRev, info[0])
+				printPart(_partVcsSaplNode, info[1])
+				printPart(_partVcsSaplBookmarks, info[3])
+				if info[4] == "" {
+					printPart(_partVcsSaplBookmarkActive, "@")
+				} else {
+					printPart(_partVcsSaplBookmarkActive, info[4])
+				}
+				printPart(_partVcsSaplBookmarksRemote, info[2])
+			}
+
+			return nil
+		})
+
+
+		subTasks.Go(func(ctx context.Context) error {
+			if saplStatus, err := stringExec("sl", "status"); err == nil {
+				if len(saplStatus) == 0 {
+					printPart(_partVcsDirty, 0)
+					return nil
+				}
+
+				printPart(_partVcsDirty, 1)
+			}
+			return nil
+		})
 
 		return nil
 	})

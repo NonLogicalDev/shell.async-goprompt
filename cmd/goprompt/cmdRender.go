@@ -137,6 +137,42 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 		partsTop = append(partsTop, fmt.Sprintf("{%v}", strings.Join(gitParts, ":")))
 	}
 
+	if p[_partVcs] == "sapling" {
+		var saplParts []string
+
+		saplMark := "spl"
+		saplMarkC := yellowC
+
+		saplBookmark := fmt.Sprint(p[_partVcsSaplBookmarkActive])
+		saplBookmarkC := greenC
+
+		saplDirtyMarks := ""
+		saplDirtyMarksC := redC
+		if p[_partVcsDirty] != "" && p[_partVcsDirty] != "0" {
+			saplDirtyMarks = "&"
+		}
+
+		// distanceMarks := ""
+		// distanceMarksC := magentaC
+
+		// distanceAhead := strInt(p[_partVcsLogAhead])
+		// distanceBehind := strInt(p[_partVcsLogBehind])
+		// if distanceAhead > 0 || distanceBehind > 0 {
+		// 	distanceMarks = fmt.Sprintf("[+%v:-%v]", distanceAhead, distanceBehind)
+		// }
+
+		saplParts = append(saplParts, saplMarkC(saplMark))
+		saplParts = append(saplParts, saplBookmarkC(saplBookmark))
+		if len(saplDirtyMarks) > 0 {
+			saplParts = append(saplParts, saplDirtyMarksC(saplDirtyMarks))
+		}
+		// if len(distanceMarks) > 0 {
+		// 	saplParts = append(saplParts, distanceMarksC(distanceMarks))
+		// }
+
+		partsTop = append(partsTop, fmt.Sprintf("{%v}", strings.Join(saplParts, ":")))
+	}
+
 	if p[_partVcsStg] != "" {
 		var stgParts []string
 
