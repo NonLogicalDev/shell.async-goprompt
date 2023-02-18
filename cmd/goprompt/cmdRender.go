@@ -125,6 +125,15 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 			distanceMarks = fmt.Sprintf("[+%v:-%v]", distanceAhead, distanceBehind)
 		}
 
+		rebaseOp := ""
+		rebaseOpC := redC
+		if len(p[_partVcsGitRebaseOp]) != 0 {
+			rebaseOp = p[_partVcsGitRebaseOp]
+			if p[_partVcsGitRebaseLeft] != "" {
+				rebaseOp += fmt.Sprintf("(%v)", p[_partVcsGitRebaseLeft])
+			}
+		}
+
 		gitParts = append(gitParts, gitMarkC(gitMark))
 		gitParts = append(gitParts, gitBranchC(gitBranch))
 		if len(gitDirtyMarks) > 0 {
@@ -132,6 +141,9 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 		}
 		if len(distanceMarks) > 0 {
 			gitParts = append(gitParts, distanceMarksC(distanceMarks))
+		}
+		if len(rebaseOp) > 0 {
+			gitParts = append(gitParts, rebaseOpC(rebaseOp))
 		}
 
 		partsTop = append(partsTop, fmt.Sprintf("{%v}", strings.Join(gitParts, ":")))
@@ -152,23 +164,11 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 			saplDirtyMarks = "&"
 		}
 
-		// distanceMarks := ""
-		// distanceMarksC := magentaC
-
-		// distanceAhead := strInt(p[_partVcsLogAhead])
-		// distanceBehind := strInt(p[_partVcsLogBehind])
-		// if distanceAhead > 0 || distanceBehind > 0 {
-		// 	distanceMarks = fmt.Sprintf("[+%v:-%v]", distanceAhead, distanceBehind)
-		// }
-
 		saplParts = append(saplParts, saplMarkC(saplMark))
 		saplParts = append(saplParts, saplBookmarkC(saplBookmark))
 		if len(saplDirtyMarks) > 0 {
 			saplParts = append(saplParts, saplDirtyMarksC(saplDirtyMarks))
 		}
-		// if len(distanceMarks) > 0 {
-		// 	saplParts = append(saplParts, distanceMarksC(distanceMarks))
-		// }
 
 		partsTop = append(partsTop, fmt.Sprintf("{%v}", strings.Join(saplParts, ":")))
 	}

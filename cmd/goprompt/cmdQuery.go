@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -73,6 +74,9 @@ const (
 	_partVcsStgQpos  = "vcs_git_stg_qpos"
 	_partVcsStgTop   = "vcs_git_stg_top"
 	_partVcsStgDirty = "vcs_git_stg_dirty"
+
+	_partVcsGitRebaseOp    = "vcs_git_rebase_op"
+	_partVcsGitRebaseLeft  = "vcs_git_rebase_op_left"
 
 	_partVcsGitIdxTotal    = "vcs_git_idx_total"
 	_partVcsGitIdxIncluded = "vcs_git_idx_incl"
@@ -273,24 +277,43 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partVcs, "git")
 		} else {
 			return nil
+
 		}
 
+		gitDir, _ := stringExec("git", "rev-parse", "--path-format=absolute", "--git-dir")
+
 		subTasks.Go(func(ctx context.Context) error {
-			if branch, err := stringExec("git", "branch", "--show-current"); err == nil {
-				branch = trim(branch)
-				if len(branch) > 0 {
-					printPart(_partVcsBranch, trim(branch))
-					return nil
+
+
+
+			headRef := ""
+			if cherryHeadB, _ := os.ReadFile(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); len(cherryHeadB) > 0 {
+				headRef = trim(string(cherryHeadB))
+				printPart(_partVcsGitRebaseOp, "cherry")
+			} else if mergeHeadB, _ := os.ReadFile(filepath.Join(gitDir, "MERGE_HEAD")); len(mergeHeadB) > 0 {
+				headRef = trim(string(mergeHeadB))
+				printPart(_partVcsGitRebaseOp, "merge")
+			} else if rebaseHeadB, _ := os.ReadFile(filepath.Join(gitDir, "rebase-merge", "orig-head")); len(rebaseHeadB) > 0 {
+				headRef = trim(string(rebaseHeadB))
+				printPart(_partVcsGitRebaseOp, "rebase")
+
+				actionsLeftB, _ := os.ReadFile(filepath.Join(gitDir, "rebase-merge", "git-rebase-todo"))
+				actionsLeft := trim(string(actionsLeftB))
+				if len(actionsLeftB) == 0 {
+					printPart(_partVcsGitRebaseLeft, 1)
+				} else {
+					printPart(_partVcsGitRebaseLeft, len(strings.Split(string(actionsLeft), "\n"))+1)
 				}
 			}
 
-			if branch, err := stringExec("git", "name-rev", "--name-only", "HEAD"); err == nil {
-				branch = trim(branch)
-				if len(branch) > 0 {
-					printPart(_partVcsBranch, trim(branch))
-					return nil
-				}
+			branch := ""
+
+			if len(headRef) != 0 {
+				branch, _ = stringExec("git", "name-rev", "--name-only", headRef)
+			} else {
+				branch, _ = stringExec("git", "branch", "--show-current")
 			}
+			printPart(_partVcsBranch, branch)
 
 			return nil
 		})
