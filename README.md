@@ -4,6 +4,7 @@ Inspired by:
 * https://github.com/nbari/slick
 * https://github.com/ericfreese/zsh-efgit-prompt
 * By the idea that Prompt Should NOT introduce any LAG
+* By the pain of working in a gargantous monorepo where `git status` used to take over `10` seconds to run.
 
 ## Selling Points:
 
