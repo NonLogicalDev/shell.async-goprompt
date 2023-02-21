@@ -5,8 +5,10 @@
 * Packs some punch, with lightning speed never seen before!
 * This prompt is truly **INSTA**, as fast as no prompt at all.
 * Zero lag between pressing enter and being able to type your next command.
-* Truly and faithfully asynchroneous, can cope with most bloated Git monorepos out there without introducing lag. **#this_was_the_reason_this_prompt_was_created**
-* The only prompt out there with support for **Stacked Git**. **#another_reason**
+* Truly and faithfully asynchroneous, can cope with most bloated Git monorepos out there without introducing lag. 
+	* **#this_was_the_reason_this_prompt_was_created**
+* The only prompt out there with support for **Stacked Git**.
+	**#another_reason**
 * Nearly the only prompt out there to use ZLE File Descriptor co-routines effectively.
 
 ![Demo Of GoPrompt With ZLE](./assets/Kapture%202022-07-26%20at%2010.45.33.gif "Capture")
