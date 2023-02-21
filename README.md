@@ -37,6 +37,12 @@ And if you want to build it yourself and/or contribute, feel free to checkout [#
 
 ## Install Into Shell
 
+Try for one session:
+```
+$ eval "$(goprompt install zsh)"
+```
+
+Install permanently:
 ```
 $ goprompt install zsh >> ~/.zshrc
 ```
