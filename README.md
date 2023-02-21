@@ -1,5 +1,10 @@
 # Not Your Average Async ZSH Shell Prompt
 
+Inspired by: 
+* https://github.com/nbari/slick
+* https://github.com/ericfreese/zsh-efgit-prompt
+* By the idea that Prompt Should NOT introduce any LAG
+
 ## Selling Points:
 
 * Packs some punch, with lightning speed never seen before!
