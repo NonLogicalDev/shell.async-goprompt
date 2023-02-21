@@ -84,7 +84,7 @@ $ goprompt install zsh >> ~/.zshrc
 		* makes debugging shell scripts and `test` commands that much easier
 	* Vim Mode indicator support
 		* (`>`) - default (insert mode)
-		* (`>`) - normal (command edit mode)
+		* (`<`) - normal (command edit mode)
 	* SSH / Remote process detection
 
 * Prompt Query State:
