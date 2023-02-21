@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -33,6 +34,14 @@ var (
 		"timeout", 0,
 		"timeout after which to give up",
 	)
+	flgQPidParentSkip = cmdQuery.PersistentFlags().Int(
+		"pid-parent-skip", 0,
+		"skip this many parent PIDs when determining true parent process (when run from ZSH ZLE descriptor we end up with extra PID nesting)",
+	)
+	flgQPidChain = cmdQuery.PersistentFlags().Bool(
+		"pid-chain", false,
+		"add extra pid parent chain information",
+	)
 )
 
 func init() {
@@ -51,13 +60,15 @@ const (
 	_partWorkDir      = "wd"
 	_partWorkDirShort = "wd_trim"
 
-	_partPid           = "pid"
-	_partPidShell      = "pid_shell"
-	_partPidShellExec  = "pid_shell_exec"
-	_partPidParent     = "pid_parent"
-	_partPidParentExec = "pid_parent_exec"
-	_partPidRemote     = "pid_remote"
-	_partPidRemoteExec = "pid_remote_exec"
+	_partPid            = "pid"
+	_partPidShell       = "pid_shell"
+	_partPidShellExec   = "pid_shell_exec"
+	_partPidParent      = "pid_parent"
+	_partPidParentExec  = "pid_parent_exec"
+	_partPidRemote      = "pid_remote"
+	_partPidRemoteExec  = "pid_remote_exec"
+	_partPidChain       = "pid_chain"
+	_partPidChainLength = "pid_chain_length"
 
 	_partSessionUsername = "session_username"
 	_partSessionHostname = "session_hostname"
@@ -75,8 +86,8 @@ const (
 	_partVcsStgTop   = "vcs_git_stg_top"
 	_partVcsStgDirty = "vcs_git_stg_dirty"
 
-	_partVcsGitRebaseOp    = "vcs_git_rebase_op"
-	_partVcsGitRebaseLeft  = "vcs_git_rebase_op_left"
+	_partVcsGitRebaseOp   = "vcs_git_rebase_op"
+	_partVcsGitRebaseLeft = "vcs_git_rebase_op_left"
 
 	_partVcsGitIdxTotal    = "vcs_git_idx_total"
 	_partVcsGitIdxIncluded = "vcs_git_idx_incl"
@@ -190,35 +201,51 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	})
 
 	tasks.Go(func(_ context.Context) error {
+		type list []interface{}
+		type dict map[string]interface{}
+
 		psChain, err := moduleFindProcessChain()
 		if err != nil {
 			return nil
 		}
 
-		if len(psChain) > 3 {
-			pidShell := psChain[1]
-			pidShellParent := psChain[2]
-
-			pidShellExecName, _, _ := strings.Cut(pidShell.Executable(), " ")
-			printPart(_partPidShell, pidShell.Pid())
-			printPart(_partPidShellExec, pidShellExecName)
-
-			pidShellParentExecName, _, _ := strings.Cut(pidShellParent.Executable(), " ")
-			printPart(_partPidParent, pidShellParent.Pid())
-			printPart(_partPidParentExec, pidShellParentExecName)
-		}
+		printPart(_partPidChainLength, len(psChain))
 
 		var pidRemote ps.Process
-		for _, psInfo := range psChain {
-			if strings.Contains(psInfo.Executable(), "ssh") {
-				pidRemote = psInfo
-				break
+		var pidChain list
+		for psIdx, ps := range psChain {
+			pidChain = append(pidChain, dict{
+				"name": ps.Executable(),
+				"pid":  ps.Pid(),
+			})
+
+			// Find if we are in a remote session.
+			if strings.Contains(ps.Executable(), "ssh") && pidRemote == nil {
+				pidRemote = ps
+			}
+
+			psIdxAdj := psIdx - *flgQPidParentSkip
+
+			if psIdxAdj == 1 {
+				pidShellExecName, _, _ := strings.Cut(ps.Executable(), " ")
+				printPart(_partPidShell, ps.Pid())
+				printPart(_partPidShellExec, pidShellExecName)
+			} else if psIdxAdj == 2 {
+				pidShellParentExecName, _, _ := strings.Cut(ps.Executable(), " ")
+				printPart(_partPidParent, ps.Pid())
+				printPart(_partPidParentExec, pidShellParentExecName)
 			}
 		}
+
 		if pidRemote != nil {
 			pidShellRemoteExecName, _, _ := strings.Cut(pidRemote.Executable(), " ")
 			printPart(_partPidRemote, pidRemote.Pid())
 			printPart(_partPidRemoteExec, pidShellRemoteExecName)
+		}
+
+		if *flgQPidChain {
+			pidChainJson, _ := json.Marshal(pidChain)
+			printPart(_partPidChain, string(pidChainJson))
 		}
 
 		return nil
@@ -253,7 +280,6 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			return nil
 		})
 
-
 		subTasks.Go(func(ctx context.Context) error {
 			if saplStatus, err := stringExec("sl", "status"); err == nil {
 				if len(saplStatus) == 0 {
@@ -283,8 +309,6 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		gitDir, _ := stringExec("git", "rev-parse", "--path-format=absolute", "--git-dir")
 
 		subTasks.Go(func(ctx context.Context) error {
-
-
 
 			headRef := ""
 			if cherryHeadB, _ := os.ReadFile(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); len(cherryHeadB) > 0 {

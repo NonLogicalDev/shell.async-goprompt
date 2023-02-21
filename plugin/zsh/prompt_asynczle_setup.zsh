@@ -39,6 +39,7 @@ __async_prompt_query() {
   ${G_GOPROMPT} query \
     --cmd-status "$G_LAST_STATUS" \
     --preexec-ts "$G_PREEXEC_TS" \
+    --pid-parent-skip 1 \
     --timeout "$ZSH_ASYNC_PROMPT_TIMEOUT"
 }
 
