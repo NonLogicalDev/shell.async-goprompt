@@ -1,21 +1,18 @@
 # In a file `prompt_asynczle_setup` available on `fpath`
 emulate -L zsh
 
-typeset -g C_PROMPT_NEWLINE=$'\n%{\r%}'
-
-typeset -g G_LAST_STATUS=0
-typeset -g G_PREEXEC_TS=0
-typeset -g G_ASYNC_DONE=0
-
-typeset -g G_PROMPT_DATA=""
-
-typeset -g G_LAST_PROMPT=""
-
-declare -gA ZLE_ASYNC_FDS=()
-
 typeset -g ZSH_ASYNC_PROMPT_TIMEOUT=${ZSH_ASYNC_PROMPT_TIMEOUT:-5s}
+typeset -g ZSH_ASYNC_PROMPT_EXEC=${GOPROMPT}
 
-typeset -g G_GOPROMPT=${GOPROMPT}
+typeset -g ZSH_ASYNC_PROMPT_DATA=""
+typeset -g ZSH_ASYNC_PROMPT_LAST=""
+
+typeset -g ZSH_ASYNC_PROMPT_LAST_STATUS=0
+typeset -g ZSH_ASYNC_PROMPT_PREEXEC_TS=0
+typeset -g ZSH_ASYNC_PROMPT_QUERY_DONE=0
+
+declare -gA __ZLE_ASYNC_FDS=()
+typeset -g __ZSH_ASYNC_PROMPT_NEWLINE=$'\n%{\r%}'
 
 #-------------------------------------------------------------------------------
 
@@ -31,20 +28,20 @@ __async_check_exec() {
 }
 
 __async_prompt_query() {
-  if ! __async_check_exec "${G_GOPROMPT}"; then
+  if ! __async_check_exec "${ZSH_ASYNC_PROMPT_EXEC}"; then
     echo -n ""
     return
   fi
 
-  ${G_GOPROMPT} query \
-    --cmd-status "$G_LAST_STATUS" \
-    --preexec-ts "$G_PREEXEC_TS" \
+  ${ZSH_ASYNC_PROMPT_EXEC} query \
+    --cmd-status "${ZSH_ASYNC_PROMPT_LAST_STATUS:-0}" \
+    --preexec-ts "${ZSH_ASYNC_PROMPT_PREEXEC_TS:-0}" \
     --pid-parent-skip 1 \
-    --timeout "$ZSH_ASYNC_PROMPT_TIMEOUT"
+    --timeout "${ZSH_ASYNC_PROMPT_TIMEOUT:-5s}"
 }
 
 __async_prompt_render() {
-  if ! __async_check_exec "${G_GOPROMPT}"; then
+  if ! __async_check_exec "${ZSH_ASYNC_PROMPT_EXEC}"; then
     echo -n "?>"
     return
   fi
@@ -55,11 +52,11 @@ __async_prompt_render() {
   fi
 
   local LOADING=1
-  if [[ $G_ASYNC_DONE -eq 1 ]]; then
+  if [[ $ZSH_ASYNC_PROMPT_QUERY_DONE -eq 1 ]]; then
     LOADING=0
   fi
 
-  ${G_GOPROMPT} render \
+  ${ZSH_ASYNC_PROMPT_EXEC} render \
     --prompt-mode "$MODE" \
     --prompt-loading="$LOADING" \
     --color-mode "zsh"
@@ -68,15 +65,15 @@ __async_prompt_render() {
 #-------------------------------------------------------------------------------
 
 __prompt_rerender() {
-  local BR=$C_PROMPT_NEWLINE
+  local BR=$__ZSH_ASYNC_PROMPT_NEWLINE
 
-  PROMPT="$(printf "%s\n" "$G_PROMPT_DATA" | __async_prompt_render) "
+  PROMPT="$(printf "%s\n" "$ZSH_ASYNC_PROMPT_DATA" | __async_prompt_render) "
 
-  if [[ $PROMPT != $G_LAST_PROMPT ]]; then
+  if [[ $PROMPT != $ZSH_ASYNC_PROMPT_LAST ]]; then
     zle && zle reset-prompt
   fi
 
-  G_LAST_PROMPT="$PROMPT"
+  ZSH_ASYNC_PROMPT_LAST="$PROMPT"
 }
 
 #-------------------------------------------------------------------------------
@@ -84,18 +81,18 @@ __prompt_rerender() {
 #-------------------------------------------------------------------------------
 
 __prompt_preexec() {
-    typeset -g G_PREEXEC_TS=$EPOCHSECONDS
+    typeset -g ZSH_ASYNC_PROMPT_PREEXEC_TS=$EPOCHSECONDS
 }
 
 __prompt_precmd() {
   # save the status of last command.
-  G_LAST_STATUS=$?
+  ZSH_ASYNC_PROMPT_LAST_STATUS=$?
 
   # reset prompt state
-  G_PROMPT_DATA=""
+  ZSH_ASYNC_PROMPT_DATA=""
 
   # set prompt status to rendering
-  G_ASYNC_DONE=0
+  ZSH_ASYNC_PROMPT_QUERY_DONE=0
 
   __zle_async_dispatch __zle_async_fd_handler __async_prompt_query
 
@@ -116,15 +113,15 @@ __zle_async_fd_handler() {
     # select marks this fd if we reach EOF,
     # so handle this specially.
     __zle_async_detach "$ZLE_FD"
-    G_ASYNC_DONE=1
+    ZSH_ASYNC_PROMPT_QUERY_DONE=1
 
-    G_PROMPT_DATA="${G_PROMPT_DATA}"$'\n'"${ASYNC_RESULT}"
+    ZSH_ASYNC_PROMPT_DATA="${ZSH_ASYNC_PROMPT_DATA}"$'\n'"${ASYNC_RESULT}"
     __prompt_rerender
 
     return 1
   fi
 
-  G_PROMPT_DATA="${G_PROMPT_DATA}"$'\n'"${ASYNC_RESULT}"
+  ZSH_ASYNC_PROMPT_DATA="${ZSH_ASYNC_PROMPT_DATA}"$'\n'"${ASYNC_RESULT}"
   if [[ $ASYNC_RESULT == "" ]]; then
     __prompt_rerender
   fi
@@ -135,7 +132,7 @@ __zle_async_dispatch() {
   local command=( "$@" )
 
   # Close existing file descriptor for this handler.
-  local OLD_ZLE_FD=${ZLE_ASYNC_FDS["${dispatch_handler}"]}
+  local OLD_ZLE_FD=${__ZLE_ASYNC_FDS["${dispatch_handler}"]}
   if [[ -n $OLD_ZLE_FD ]]; then
     __zle_async_detach "$OLD_ZLE_FD" 2>/dev/null
   fi
@@ -147,7 +144,7 @@ __zle_async_dispatch() {
 
   # Attach file a ZLE handler to file descriptor.
   zle -F $ZLE_FD "${dispatch_handler}"
-  ZLE_ASYNC_FDS["${dispatch_handler}"]="$ZLE_FD"
+  __ZLE_ASYNC_FDS["${dispatch_handler}"]="$ZLE_FD"
 }
 
 __zle_async_detach() {
@@ -162,6 +159,8 @@ __zle_async_detach() {
 #-------------------------------------------------------------------------------
 
 prompt_asynczle_setup() {
+  zmodload zsh/datetime || :
+
   autoload -Uz +X add-zsh-hook 2>/dev/null
   autoload -Uz +X add-zle-hook-widget 2>/dev/null
 

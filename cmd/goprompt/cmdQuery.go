@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,13 +23,13 @@ var (
 		Use:   "query",
 		Short: "start the query that pulls data for the prompt",
 	}
-	flgQCmdStatus = cmdQuery.PersistentFlags().Int(
-		"cmd-status", 0,
-		"cmd status of previous command",
+	flgQCmdStatus = cmdQuery.PersistentFlags().String(
+		"cmd-status", "0",
+		"cmd status of previous command (int)",
 	)
-	flgQPreexecTS = cmdQuery.PersistentFlags().Int(
-		"preexec-ts", 0,
-		"pre-execution timestamp to gauge how log execution took",
+	flgQPreexecTS = cmdQuery.PersistentFlags().String(
+		"preexec-ts", "0",
+		"pre-execution timestamp to gauge how log execution took (int)",
 	)
 	flgQTimeout = cmdQuery.PersistentFlags().Duration(
 		"timeout", 0,
@@ -164,8 +165,9 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 	nowTS := time.Now()
 	printPart(_partTimestamp, timeFMT(nowTS))
 
-	if *flgQCmdStatus != 0 {
-		printPart(_partStatus, fmt.Sprintf("%#v", *flgQCmdStatus))
+	prevCMDStatus := trim(*flgQCmdStatus)
+	if prevCMDStatus != "0" {
+		printPart(_partStatus, fmt.Sprintf("%s", prevCMDStatus))
 	}
 
 	tasks.Go(func(ctx context.Context) error {
@@ -188,12 +190,14 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 			printPart(_partSessionHostname, sessionHostname)
 		}
 
-		if *flgQPreexecTS != 0 {
-			cmdTS := time.Unix(int64(*flgQPreexecTS), 0)
-
-			diff := nowTS.Sub(cmdTS).Round(time.Second)
-			if diff > 1 {
-				printPart(_partDuration, diff)
+		preexecTS := trim(*flgQPreexecTS)
+		if preexecTS != "0" {
+			if ts, err := strconv.Atoi(preexecTS); err == nil {
+				cmdTS := time.Unix(int64(ts), 0)
+				diff := nowTS.Sub(cmdTS).Round(time.Second)
+				if diff > 1 {
+					printPart(_partDuration, diff)
+				}
 			}
 		}
 
