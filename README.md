@@ -35,6 +35,12 @@ go install github.com/NonLogicalDev/shell.async-goprompt/cmd/goprompt@latest
 
 And if you want to build it yourself and/or contribute, feel free to checkout [#Install](#install) section below, for instruction of how to build it from source locally.
 
+## Install Into Shell
+
+```
+$ goprompt install zsh >> ~/.zshrc
+```
+
 ## Default Renderer supports:
 
 ### Example:
