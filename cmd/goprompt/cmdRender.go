@@ -29,12 +29,6 @@ var (
 		"prompt-mode", "normal",
 		"mode of the prompt (normal, edit)",
 	)
-
-	// DEPRECATED
-	flgRNewline = cmdRender.PersistentFlags().String(
-		"newline", "\n",
-		"newline for the prompt",
-	)
 )
 
 func init() {
@@ -49,6 +43,7 @@ var (
 	blueC    = fmt.Sprint
 	magentaC = fmt.Sprint
 	normalC  = fmt.Sprint
+	newline  = "\n"
 )
 
 func setColorMode(mode string) {
@@ -65,6 +60,8 @@ func setColorMode(mode string) {
 		blueC = wrapC("%F{blue}", "%F{reset}")
 		magentaC = wrapC("%F{magenta}", "%F{reset}")
 		greyC = wrapC("%F{black}", "%F{reset}")
+		newline = "\n%{\r%}"
+		
 	} else if mode == "ascii" {
 		redC = color.Red.Render
 		greenC = color.Green.Render
@@ -72,6 +69,7 @@ func setColorMode(mode string) {
 		blueC = color.Blue.Render
 		magentaC = color.Magenta.Render
 		greyC = color.Black.Render
+		newline = "\n"
 	}
 }
 
@@ -260,7 +258,7 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 	}
 	promptLines = append(promptLines, promptMarker)
 
-	fmt.Print(strings.Join(promptLines, "\n"))
+	fmt.Print(strings.Join(promptLines, newline))
 
 	return nil
 }

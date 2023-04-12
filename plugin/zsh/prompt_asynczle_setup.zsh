@@ -65,8 +65,6 @@ __async_prompt_render() {
 #-------------------------------------------------------------------------------
 
 __prompt_rerender() {
-  local BR=$__ZSH_ASYNC_PROMPT_NEWLINE
-
   PROMPT="$(printf "%s\n" "$ZSH_ASYNC_PROMPT_DATA" | __async_prompt_render) "
 
   if [[ $PROMPT != $ZSH_ASYNC_PROMPT_LAST ]]; then
