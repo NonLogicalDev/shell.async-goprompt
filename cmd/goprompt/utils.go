@@ -82,6 +82,7 @@ func stringExec(path string, args ...string) (string, error) {
 
 	out, err := shellout.New(ctx,
 		shellout.Args(path, args...),
+		shellout.EnvInherit(),
 		shellout.EnvSet(map[string]string{
 			"GIT_OPTIONAL_LOCKS": "0",
 		}),

@@ -313,7 +313,6 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		gitDir, _ := stringExec("git", "rev-parse", "--path-format=absolute", "--git-dir")
 
 		subTasks.Go(func(ctx context.Context) error {
-
 			headRef := ""
 			if cherryHeadB, _ := os.ReadFile(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); len(cherryHeadB) > 0 {
 				headRef = trim(string(cherryHeadB))
@@ -471,4 +470,9 @@ func startPrinter() (func(), func(name string, value interface{})) {
 
 	printPart(_partPid, os.Getpid())
 	return printerStop, printPart
+}
+
+func jsonPart(d interface{}) string {
+	b, _ := json.Marshal(d)
+	return string(b)
 }

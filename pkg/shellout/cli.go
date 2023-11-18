@@ -17,7 +17,7 @@ type Cmd struct {
 	stderr io.Writer
 	stdout io.Writer
 
-	env map[string]string
+	env []string
 
 	cmd *exec.Cmd
 }
@@ -53,7 +53,15 @@ func ArgsAddFN(fn func() (args []string)) Option {
 
 func EnvSet(env map[string]string) Option {
 	return func(ex *Cmd) {
-		ex.env = env
+		for k, v := range env {
+			ex.env = append(ex.env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+}
+
+func EnvInherit() Option {
+	return func(ex *Cmd) {
+		ex.env = append(ex.env, os.Environ()...)
 	}
 }
 
@@ -116,9 +124,7 @@ func (ex *Cmd) Pipe(other *Cmd, tee bool) error {
 }
 
 func New(ctx context.Context, options ...Option) *Cmd {
-	ex := &Cmd{
-		env: map[string]string{},
-	}
+	ex := &Cmd{}
 	for _, opt := range options {
 		opt(ex)
 	}
@@ -127,10 +133,7 @@ func New(ctx context.Context, options ...Option) *Cmd {
 	cmd.Stdin = ex.stdin
 	cmd.Stdout = ex.stdout
 	cmd.Stderr = ex.stderr
-
-	for k, v := range ex.env {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
+	cmd.Env = ex.env
 
 	ex.cmd = cmd
 
