@@ -21,13 +21,17 @@ var (
 		"prompt-loading", false,
 		"is prompt query not yet done rendering",
 	)
-	flgRColorMode = cmdRender.PersistentFlags().String(
-		"color-mode", "none",
-		"color rendering mode of the prompt (zsh, ascii, none)",
+	flgREscapeMode = cmdRender.PersistentFlags().String(
+		"escape-mode", "none",
+		"color / escape rendering mode of the prompt (zsh, ascii, none)",
 	)
 	flgRMode = cmdRender.PersistentFlags().String(
 		"prompt-mode", "normal",
 		"mode of the prompt (normal, edit)",
+	)
+	flgRPromptStartMark = cmdRender.PersistentFlags().String(
+		"prompt-mark-start", "",
+		"mark to place at the start of the prompt (first prompt line)",
 	)
 )
 
@@ -61,7 +65,7 @@ func setColorMode(mode string) {
 		magentaC = wrapC("%F{magenta}", "%F{reset}")
 		greyC = wrapC("%F{black}", "%F{reset}")
 		newline = "\n%{\r%}"
-		
+
 	} else if mode == "ascii" {
 		redC = color.Red.Render
 		greenC = color.Green.Render
@@ -74,7 +78,7 @@ func setColorMode(mode string) {
 }
 
 func cmdRenderRun(_ *cobra.Command, _ []string) error {
-	setColorMode(*flgRColorMode)
+	setColorMode(*flgREscapeMode)
 
 	if _, err := os.Stdin.Stat(); err != nil {
 		fmt.Printf("%#v", err)
@@ -258,7 +262,14 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 	}
 	promptLines = append(promptLines, promptMarker)
 
-	fmt.Print(strings.Join(promptLines, newline))
+	// Add prompt mark to last line
+	lastLine := len(promptLines) - 1
+	if lastLine >= 0 {
+		promptLines[lastLine] = fmt.Sprintf("%v%v", *flgRPromptStartMark, promptLines[lastLine])
+	}
+
+	fullPrompt := strings.Join(promptLines, newline)
+	fmt.Print(fullPrompt)
 
 	return nil
 }

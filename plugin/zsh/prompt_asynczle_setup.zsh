@@ -1,6 +1,7 @@
 # In a file `prompt_asynczle_setup` available on `fpath`
 emulate -L zsh
 
+typeset -g ZSH_ASYNC_PROMPT_START_MARK=${ZSH_ASYNC_PROMPT_START_MARK:-}
 typeset -g ZSH_ASYNC_PROMPT_TIMEOUT=${ZSH_ASYNC_PROMPT_TIMEOUT:-5s}
 typeset -g ZSH_ASYNC_PROMPT_EXEC=${GOPROMPT}
 
@@ -59,7 +60,8 @@ __async_prompt_render() {
   ${ZSH_ASYNC_PROMPT_EXEC} render \
     --prompt-mode "$MODE" \
     --prompt-loading="$LOADING" \
-    --color-mode "zsh"
+    --prompt-mark-start "$ZSH_ASYNC_PROMPT_START_MARK" \
+    --escape-mode "zsh"
 }
 
 #-------------------------------------------------------------------------------
