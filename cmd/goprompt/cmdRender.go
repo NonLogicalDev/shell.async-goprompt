@@ -17,13 +17,14 @@ var (
 		Short: "render the prompt based on the results of query",
 	}
 
-	flgRLoading = cmdRender.PersistentFlags().Bool(
-		"prompt-loading", false,
-		"is prompt query not yet done rendering",
-	)
 	flgREscapeMode = cmdRender.PersistentFlags().String(
 		"escape-mode", "none",
 		"color / escape rendering mode of the prompt (zsh, ascii, none)",
+	)
+
+	flgRLoading = cmdRender.PersistentFlags().Bool(
+		"prompt-loading", false,
+		"notify that prompt query is ongoing",
 	)
 	flgRMode = cmdRender.PersistentFlags().String(
 		"prompt-mode", "normal",
