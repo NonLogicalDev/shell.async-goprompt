@@ -1,31 +1,45 @@
 # Not Your Average Async ZSH Shell Prompt
 
-Inspired by: 
+<center>
+
+![Project Logo](./assets/logo_w1000.png)
+
+</center>
+
+Inspired by:
 * https://github.com/nbari/slick
 * https://github.com/ericfreese/zsh-efgit-prompt
 * By the idea that Prompt Should NOT introduce any LAG
 * By the pain of working in a gargantous monorepo where `git status` used to take over `10` seconds to run.
 
+
 ## Selling Points:
 
 * Packs some punch, with lightning speed never seen before!
-* This prompt is truly **INSTA**, as fast as no prompt at all.
+* This prompt is truly **⚡️ INSTA ⚡️**, as fast as no prompt at all.
 * Zero lag between pressing enter and being able to type your next command.
-* Truly and faithfully asynchronous, can cope with most bloated Git monorepos out there without introducing lag. 
-	* **#this_was_the_reason_this_prompt_was_created**
-* The only prompt out there with support for **Stacked Git**.
-	* **#another_reason**
-* Nearly the only prompt out there to use ZLE File Descriptor co-routines effectively.
+* Truly and faithfully asynchronous, can cope with most bloated Git monorepos out there without introducing lag.
+	* This was the first and foremost requirement
+* Pretty much the only prompt out there with native support for **VCS: Stacked Git** and **VCS: Sappling**.
+* Pretty much the only prompt out there to use ZLE File Descriptor for async work.
 
 ![Demo Of GoPrompt With ZLE](./assets/Kapture%202022-07-26%20at%2010.45.33.gif "Capture")
 
-GoPrompt is lightning fast, and truly and faithfully asynchronous prompt based on ZLE File Descriptor co-routines, with default implementation in a simple GoLang package.
+GoPrompt is lightning fast, and truly and faithfully asynchronous prompt based on ZLE File Descriptor co-routines, with default theme/query implementation in a very simple to extend GoLang package.
 
-## Install Today
+## Quick Install
 
-I am periodically uploding new versions of pre-built binaries under `Releases`:
+The latest releases are available under:
 
 https://github.com/NonLogicalDev/shell.async-goprompt/releases/latest
+
+Install latest using:
+
+```sh
+curl -sfL https://raw.githubusercontent.com/NonLogicalDev/shell.async-goprompt/main/install.sh | bash -
+```
+
+This will install `goprompt` under `~/.local/bin`. Please ensure that it is in your `$PATH`.
 
 Alternatively if you have `GoLang` installed you can install it directly from source:
 
@@ -33,17 +47,17 @@ Alternatively if you have `GoLang` installed you can install it directly from so
 go install github.com/NonLogicalDev/shell.async-goprompt/cmd/goprompt@latest
 ```
 
-And if you want to build it yourself and/or contribute, feel free to checkout [#Install](#install) section below, for instruction of how to build it from source locally.
+And if you want to build it yourself and/or contribute, feel free to checkout [#Build Instructions](#build-instructions) section below, for guidance on how to build it from source locally.
 
 ## Install Into Shell
 
 Try for one session:
-```
+```sh
 $ eval "$(goprompt install zsh)"
 ```
 
 Install permanently:
-```
+```sh
 $ goprompt install zsh >> ~/.zshrc
 ```
 
@@ -51,21 +65,25 @@ $ goprompt install zsh >> ~/.zshrc
 
 ### Example:
 
-```
+```sh
 # After running this:
+
 	$ ( sleep 570; exit 130 )
 
 # Example prompt with most integrations displayed:
+
 	:: {git:main:&:[+1:-0]} {stg:readme:1/2}
 	:: [130] (vifm) (~/U/P/shell.async-goprompt) 9m30s [22:18:42 02/20/23]
 	>
 
 # After normal (faster, errorless) execution:
+
 	:: {git:main:&:[+1:-0]} {stg:readme:1/2}
 	:: (vifm) (~/U/P/shell.async-goprompt) [22:18:42 02/20/23]
 	>
 
 # When outside of VCS root:
+
 	:: ------------------------------
 	:: (vifm) (~/U/Projects) [22:18:42 02/20/23]
 	>
@@ -163,9 +181,9 @@ And the main query/rendering logic is implemented in GO
 
 * [goprompt](./cmd/goprompt)
 
-## Install
+## Build Instructions
 
-```
+```sh
 $ eval "$(gimme 1.20)"
 $ make install USR_BIN_DIR="$HOME/bin"
 $ goprompt install zsh >> ~/.zshrc
