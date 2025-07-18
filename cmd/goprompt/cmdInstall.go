@@ -20,6 +20,8 @@ var cmdInstallHelpLong = `
 
 	* zsh
 	* zsh.plugin
+	* fish
+	* fish.plugin
 `
 
 const defaultContent = `
@@ -54,6 +56,7 @@ func replacePlaceholders(content string) string {
 	goPromptExec = shellquote.Join(goPromptExec)
 	content = strings.ReplaceAll(content, "{{goprompt}}", goPromptExec)
 	content = strings.ReplaceAll(content, "${GOPROMPT}", goPromptExec)
+	content = strings.ReplaceAll(content, "{$GOPROMPT}", goPromptExec)
 	return content
 }
 
@@ -71,6 +74,13 @@ func cmdInstallRun(command *cobra.Command, args []string) error {
 	case "zsh.plugin":
 		f, _ := goprompt.ZSHPluginFiles.ReadFile("plugin/zsh/prompt_asynczle_setup.zsh")
 		content = replacePlaceholders(string(f))
+	case "fish":
+		f, _ := goprompt.FishPluginFiles.ReadFile("plugin/fish/prompt_install.fish")
+		content = replacePlaceholders(string(f))
+	case "fish.plugin":
+		f, _ := goprompt.FishPluginFiles.ReadFile("plugin/fish/prompt_async_setup.fish")
+		content = replacePlaceholders(string(f))
+
 	default:
 		content = replacePlaceholders(defaultContent)
 	}

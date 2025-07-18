@@ -8,12 +8,13 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	ps "github.com/mitchellh/go-ps"
+	"github.com/shirou/gopsutil/v3/process"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
 )
@@ -58,14 +59,20 @@ const (
 	_partTimestamp = "ts"
 	_partDuration  = "ds"
 
+	_partOS = "os_name"
+
 	_partWorkDir      = "wd"
 	_partWorkDirShort = "wd_trim"
 
 	_partPid            = "pid"
 	_partPidShell       = "pid_shell"
 	_partPidShellExec   = "pid_shell_exec"
+	_partPidShellApp    = "pid_shell_app"
+	_partPidShellArgs   = "pid_shell_args"
 	_partPidParent      = "pid_parent"
 	_partPidParentExec  = "pid_parent_exec"
+	_partPidParentApp   = "pid_parent_app"
+	_partPidParentArgs  = "pid_parent_args"
 	_partPidRemote      = "pid_remote"
 	_partPidRemoteExec  = "pid_remote_exec"
 	_partPidChain       = "pid_chain"
@@ -170,6 +177,9 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		printPart(_partStatus, fmt.Sprintf("%s", prevCMDStatus))
 	}
 
+	osName := runtime.GOOS
+	printPart(_partOS, osName)
+
 	tasks.Go(func(ctx context.Context) error {
 		homeDir := os.Getenv("HOME")
 
@@ -204,47 +214,95 @@ func cmdQueryRun(_ *cobra.Command, _ []string) error {
 		return nil
 	})
 
-	tasks.Go(func(_ context.Context) error {
+	tasks.Go(func(ctx context.Context) error {
 		type list []interface{}
 		type dict map[string]interface{}
 
-		psChain, err := moduleFindProcessChain()
+		psRef, err := process.NewProcess(int32(os.Getpid()))
 		if err != nil {
-			return nil
+			printPart("debug_ps_error", err.Error())
+		}
+
+		// Construct chain of processes
+		psChain := make([]*process.Process, 0)
+		for psRef != nil && psRef.Pid != 0 {
+			psParent, err := psRef.ParentWithContext(ctx)
+			if err != nil {
+				printPart("debug_ps_error", err.Error())
+				break
+			}
+
+			psChain = append(psChain, psParent)
+			psRef = psParent
 		}
 
 		printPart(_partPidChainLength, len(psChain))
 
-		var pidRemote ps.Process
+		var pidRemote *process.Process
 		var pidChain list
 		for psIdx, ps := range psChain {
-			pidChain = append(pidChain, dict{
-				"name": ps.Executable(),
-				"pid":  ps.Pid(),
-			})
+			name, err := ps.Name()
+			if err != nil {
+				continue
+			}
+			cmdline, err := ps.CmdlineSlice()
+			if err != nil {
+				continue
+			}
 
 			// Find if we are in a remote session.
-			if strings.Contains(ps.Executable(), "ssh") && pidRemote == nil {
+			if strings.Contains(name, "ssh") && pidRemote == nil {
 				pidRemote = ps
 			}
 
 			psIdxAdj := psIdx - *flgQPidParentSkip
 
+			pidExec := ""
+			if len(cmdline) > 0 {
+				pidExec = filepath.Base(cmdline[0])
+			}
+			pidApp := pidExec
+
+			if osName == "darwin" {
+				// Extract $SOME_LOCATION/$NAME.app/.../$EXEC_NAME from cmdline
+				parts := strings.Split(cmdline[0], "/")
+				for i := range parts[:len(parts)-1] {
+					if strings.HasSuffix(parts[i], ".app") {
+						pidApp = parts[i]
+						pidExec = parts[len(parts)-1]
+						break
+					}
+				}
+			}
+
+			pidChain = append(pidChain, dict{
+				"name":    name,
+				"pid":     ps.Pid,
+				"cmdline": cmdline,
+				"exec":    pidExec,
+				"app":     pidApp,
+			})
+
 			if psIdxAdj == 1 {
-				pidShellExecName, _, _ := strings.Cut(ps.Executable(), " ")
-				printPart(_partPidShell, ps.Pid())
-				printPart(_partPidShellExec, pidShellExecName)
+				printPart(_partPidShell, ps.Pid)
+				printPart(_partPidShellExec, pidExec)
+				printPart(_partPidShellApp, pidApp)
+				printPart(_partPidShellArgs, name)
 			} else if psIdxAdj == 2 {
-				pidShellParentExecName, _, _ := strings.Cut(ps.Executable(), " ")
-				printPart(_partPidParent, ps.Pid())
-				printPart(_partPidParentExec, pidShellParentExecName)
+				printPart(_partPidParent, ps.Pid)
+				printPart(_partPidParentExec, pidExec)
+				printPart(_partPidParentApp, pidApp)
+				printPart(_partPidParentArgs, name)
 			}
 		}
 
 		if pidRemote != nil {
-			pidShellRemoteExecName, _, _ := strings.Cut(pidRemote.Executable(), " ")
-			printPart(_partPidRemote, pidRemote.Pid())
-			printPart(_partPidRemoteExec, pidShellRemoteExecName)
+			name, err := pidRemote.Name()
+			if err == nil {
+				pidShellRemoteExecName, _, _ := strings.Cut(name, " ")
+				printPart(_partPidRemote, pidRemote.Pid)
+				printPart(_partPidRemoteExec, pidShellRemoteExecName)
+			}
 		}
 
 		if *flgQPidChain {

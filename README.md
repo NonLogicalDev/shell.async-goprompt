@@ -1,4 +1,4 @@
-# Not Your Average Async ZSH Shell Prompt
+# Not Your Average Async ZSH/FISH Shell Prompt
 
 <center>
 
@@ -9,6 +9,9 @@
 Inspired by:
 * https://github.com/nbari/slick
 * https://github.com/ericfreese/zsh-efgit-prompt
+* https://github.com/acomagu/fish-async-prompt/blob/master/conf.d/__async_prompt.fish
+* https://github.com/jorgebucaran/hydro/blob/main/conf.d/hydro.fish
+
 * By the idea that Prompt Should NOT introduce any LAG
 * By the pain of working in a gargantous monorepo where `git status` used to take over `10` seconds to run.
 
@@ -23,7 +26,7 @@ Inspired by:
 * Pretty much the only prompt out there with native support for **VCS: Stacked Git** and **VCS: Sappling**.
 * Pretty much the only prompt out there to use ZLE File Descriptor for async work.
 
-![Demo Of GoPrompt With ZLE](./assets/Kapture%202022-07-26%20at%2010.45.33.gif "Capture")
+![Demo Of GoPrompt With ZLE (ZSH)](./assets/Kapture%202022-07-26%20at%2010.45.33.gif "Capture")
 
 GoPrompt is lightning fast, and truly and faithfully asynchronous prompt based on ZLE File Descriptor co-routines, with default theme/query implementation in a very simple to extend GoLang package.
 
@@ -49,7 +52,7 @@ go install github.com/NonLogicalDev/shell.async-goprompt/cmd/goprompt@latest
 
 And if you want to build it yourself and/or contribute, feel free to checkout [#Build Instructions](#build-instructions) section below, for guidance on how to build it from source locally.
 
-## Install Into Shell
+## Install Into Shell (ZSH)
 
 Try for one session:
 ```sh
@@ -59,6 +62,18 @@ $ eval "$(goprompt install zsh)"
 Install permanently:
 ```sh
 $ goprompt install zsh >> ~/.zshrc
+```
+
+## Install Into Shell (FISH)
+
+Try for one session:
+```sh
+$ eval "$(goprompt install fish)"
+```
+
+Install permanently:
+```sh
+$ goprompt install fish >> ~/.config/fish/conf.d/50-goprompt.fish
 ```
 
 ## Default Renderer supports:
@@ -183,8 +198,16 @@ And the main query/rendering logic is implemented in GO
 
 ## Build Instructions
 
+**Preferred Prerequisites:**
+
+* [Mise](https://github.com/mise-tea/mise)
+	* Used to manage GoLang dependencies
+	* But you can install GoLang dependencies manually if you want
+
 ```sh
-$ eval "$(gimme 1.20)"
+$ mise trust
 $ make install USR_BIN_DIR="$HOME/bin"
 $ goprompt install zsh >> ~/.zshrc
+# or
+$ goprompt install fish >> ~/.config/fish/conf.d/50-goprompt.fish
 ```

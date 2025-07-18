@@ -217,8 +217,10 @@ func cmdRenderRun(_ *cobra.Command, _ []string) error {
 		partsBottom = append(partsBottom, redC("["+p[_partStatus]+"]"))
 	}
 
-	if p[_partPidParentExec] != "" {
-		partsBottom = append(partsBottom, "("+p[_partPidParentExec]+")")
+	if p[_partPidParentExec] != "" && p[_partPidParentApp] != "" {
+		partsBottom = append(partsBottom, fmt.Sprintf("(%v/%v)", p[_partPidParentApp], p[_partPidParentExec]))
+	} else if p[_partPidParentExec] != "" {
+		partsBottom = append(partsBottom, fmt.Sprintf("(%v)", p[_partPidParentExec]))
 	}
 
 	partsBottom = append(partsBottom, yellowC("(")+blueC(p[_partWorkDirShort])+yellowC(")"))
